@@ -332,6 +332,10 @@ bind_java_type! {
             sig = (instance: jlong, app_id: JString) -> jboolean,
             fn = exec_app,
         },
+        static extern fn check_app {
+            sig = (instance: jlong, app_id: JString) -> JString,
+            fn = check_app,
+        },
         static extern fn set_keymap_default {
             sig = (instance: jlong),
             fn = set_keymap_default,
@@ -1854,6 +1858,18 @@ fn exec_app<'local>(
     ];
 
     Ok(instance.xdg.exec_app(app_id, env_vars))
+}
+
+fn check_app<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    instance: jlong,
+    app_id: JString<'local>,
+) -> Result<JString<'local>, BridgeError> {
+    let instance = jptr_to_instance!(instance, "checkApp")?;
+    let app_id = app_id.try_to_string(env)?;
+    let status = instance.xdg.check_app(app_id);
+    Ok(JString::new(env, &status)?)
 }
 
 fn set_keymap_default<'local>(

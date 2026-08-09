@@ -5,7 +5,8 @@ use freedesktop_desktop_entry::{
     unicase::Ascii,
 };
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 pub struct XDGSpecHelper {
     locales: Vec<String>,
@@ -151,6 +152,106 @@ impl XDGSpecHelper {
         spawn(cmd, args, env, wayland_display, runtime_dir).ok()?;
 
         Some(())
+    }
+
+    /// 检测应用是否可以启动（静态检查，不真正启动进程）。
+    /// 返回一个简短状态串：
+    ///   "ok"                    — 可启动
+    ///   "not-found"             — desktop entry 不存在
+    ///   "no-exec"               — 没有 Exec 行
+    ///   "empty"                 — Exec 解析后为空
+    ///   "missing:<cmd>"         — 可执行文件不在 PATH / 不存在
+    ///   "flatpak-missing:<id>"  — flatpak 应用未安装
+    pub fn check_app(&self, app_id: String) -> String {
+        let entry = find_app_by_id(&self.entries, Ascii::new(&app_id));
+        let entry = match entry {
+            Some(e) => e,
+            None => return "not-found".to_string(),
+        };
+        let exec = match entry.exec() {
+            Some(e) => e,
+            None => return "no-exec".to_string(),
+        };
+        let mut args = match split_exec(exec) {
+            Ok(a) => a,
+            Err(_) => return "no-exec".to_string(),
+        };
+        if args.is_empty() {
+            return "empty".to_string();
+        }
+        let cmd = args.remove(0);
+
+        // flatpak: 可执行文件是 flatpak 运行器，检查目标应用是否已安装
+        let cmd_lower = cmd.to_lowercase();
+        if cmd_lower.ends_with("/flatpak") || cmd_lower == "flatpak" {
+            // args 形如: run [options] <app-id>
+            let mut app_id_arg: Option<String> = None;
+            let mut after_run = false;
+            for a in &args {
+                if a == "run" {
+                    after_run = true;
+                    continue;
+                }
+                if after_run && !a.starts_with('-') {
+                    app_id_arg = Some(a.clone());
+                    break;
+                }
+            }
+            if let Some(app) = app_id_arg {
+                let installed = std::process::Command::new(&cmd)
+                    .arg("info")
+                    .arg(&app)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+                if !installed {
+                    return format!("flatpak-missing:{}", app);
+                }
+                return "ok".to_string();
+            }
+            // 找不到 app-id 参数，退化为检查 flatpak 运行器本身
+            if find_in_path(&cmd).is_some() {
+                return "ok".to_string();
+            }
+            return format!("missing:{}", cmd);
+        }
+
+        if find_in_path(&cmd).is_some() {
+            "ok".to_string()
+        } else {
+            format!("missing:{}", cmd)
+        }
+    }
+}
+
+/// 在 PATH 中查找可执行文件；cmd 含路径分隔符时直接检查该路径。
+fn find_in_path(cmd: &str) -> Option<PathBuf> {
+    let candidate = Path::new(cmd);
+    if candidate.components().count() > 1 || cmd.starts_with('/') {
+        if is_executable(candidate) {
+            return Some(candidate.to_path_buf());
+        }
+        return None;
+    }
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    for dir in path_var.split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let p = PathBuf::from(dir).join(cmd);
+        if is_executable(&p) {
+            return Some(p);
+        }
+    }
+    None
+}
+
+fn is_executable(p: &Path) -> bool {
+    match p.metadata() {
+        Ok(m) => m.is_file() && m.permissions().mode() & 0o111 != 0,
+        Err(_) => false,
     }
 }
 

@@ -12,6 +12,7 @@ import com.mojang.brigadier.context.CommandContext;
 import dev.evvie.waylandcraft.WaylandCraft;
 import dev.evvie.waylandcraft.WindowDisplay;
 import dev.evvie.waylandcraft.WindowTemplateManager;
+import dev.evvie.waylandcraft.bridge.WaylandCraftBridge;
 import dev.evvie.waylandcraft.bridge.WLCToplevel;
 import dev.evvie.waylandcraft.capture.PipeWireCaptureManager;
 import dev.evvie.waylandcraft.desktop.DesktopEntry;
@@ -543,17 +544,40 @@ public class WaylandCraftCommand {
 		source.sendFeedback(Component.literal("§6 §lWaylandCraft §r§7 Apps §7(" + visible.size() + " total)§r"));
 		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
 
+		WaylandCraftBridge bridge = wlc.bridge;
+		int launchable = 0;
 		for(DesktopEntry entry : visible) {
 			String name = entry.name;
 			String desc = entry.genericName != null ? entry.genericName : "";
-			String line = " §b" + name + "§r";
+			String alias = slugify(name != null ? name : entry.appId);
+			String status = (bridge != null) ? bridge.checkApp(entry.appId) : "no-exec";
+			boolean ok = "ok".equals(status);
+			if(ok) launchable++;
+
+			String line = ok ? " §a✔ §r" : " §c✘ §r";
+			line += "§b" + name + "§r";
+			if(!alias.isEmpty()) line += " §7[§e" + alias + "§7]§r";
 			if(!desc.isEmpty()) line += " §7- §8" + desc + "§r";
+			if(!ok) line += " §c(" + status + ")§r";
 			source.sendFeedback(Component.literal(line));
 		}
 
 		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
-		source.sendFeedback(Component.literal(" §7Use §e/wl launch <name>§7 to launch§r"));
+		source.sendFeedback(Component.literal(" §7" + launchable + "/" + visible.size() + " 可启动 · Use §e/wl launch <name|alias>§7 to launch§r"));
 		return 1;
+	}
+
+	/**
+	 * 生成应用别名：小写、非字母数字转下划线、连续下划线合并、去首尾下划线。
+	 * 例: "CCC HHH" -> "ccc_hhh", "Mozilla Firefox" -> "mozilla_firefox"
+	 */
+	static String slugify(String s) {
+		if(s == null) return "";
+		String slug = s.toLowerCase()
+			.replaceAll("[^a-z0-9]+", "_")
+			.replaceAll("_+", "_")
+			.replaceAll("^_+|_+$", "");
+		return slug;
 	}
 
 	/**
@@ -577,6 +601,7 @@ public class WaylandCraftCommand {
 
 		List<DesktopEntry> entries = wlc.xdgManager.entries();
 		List<DesktopEntry> matches = new ArrayList<>();
+		String appSlug = slugify(appName);
 
 		for(DesktopEntry entry : entries) {
 			if(entry.name != null && entry.name.toLowerCase().contains(appName.toLowerCase())) {
@@ -585,6 +610,12 @@ public class WaylandCraftCommand {
 				matches.add(entry);
 			} else if(entry.appId.toLowerCase().contains(appName.toLowerCase())) {
 				matches.add(entry);
+			} else if(!appSlug.isEmpty()) {
+				// 别名匹配: ccc_hhh -> CCC HHH
+				String entrySlug = slugify(entry.name != null ? entry.name : entry.appId);
+				if(entrySlug.equals(appSlug) || entrySlug.contains(appSlug)) {
+					matches.add(entry);
+				}
 			}
 		}
 

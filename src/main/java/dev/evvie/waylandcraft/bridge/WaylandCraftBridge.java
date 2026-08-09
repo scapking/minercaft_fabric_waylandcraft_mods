@@ -667,6 +667,14 @@ public class WaylandCraftBridge {
 		return execApp(instance, appId);
 	}
 	
+	/**
+	 * 检测应用是否可以启动（静态检查，不真正启动进程）。
+	 * 返回状态串: ok / not-found / no-exec / empty / missing:&lt;cmd&gt; / flatpak-missing:&lt;id&gt;
+	 */
+	public String checkApp(String appId) {
+		return checkApp(instance, appId);
+	}
+	
 	public void setKeymapDefault() {
 		setKeymapDefault(instance);
 	}
@@ -820,6 +828,8 @@ public class WaylandCraftBridge {
 	private static native boolean renderSVG(String path, int width, int height, long bufferPtr);
 	
 	private static native boolean execApp(long instance, String appId);
+	
+	private static native String checkApp(long instance, String appId);
 	
 	private static native void setKeymapDefault(long instance);
 	private static native String exportKeymap(long instance);
