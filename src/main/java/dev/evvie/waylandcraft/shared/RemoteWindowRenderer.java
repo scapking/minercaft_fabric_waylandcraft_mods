@@ -122,7 +122,7 @@ public class RemoteWindowRenderer {
 	
 	/**
 	 * 直接上传 RGBA 像素（用于 Portal ScreenCast 原始帧，不经过 JPEG 解码）
-	 * 字节顺序为 R,G,B,A
+	 * 字节顺序为 R,G,B,A（与 NativeImage Format.RGBA 内存布局一致，直接写入）
 	 */
 	public void updateTextureRGBA(long windowHandle, int width, int height, byte[] rgbaData) {
 		if(width <= 0 || height <= 0 || rgbaData == null) return;
@@ -154,19 +154,16 @@ public class RemoteWindowRenderer {
 				return;
 			}
 			
-			// NativeImage 内存布局：每像素 4 字节，通道字节序 = A,B,G,R（offset 0 = A 字节）
-			// Portal 帧是 R,G,B,A → 需要重排为 A,B,G,R
+			// NativeImage Format.RGBA 内存布局 = [R,G,B,A]（byte0 = R）
+			// Portal 帧字节序已是 R,G,B,A → 直接 memPutInt（little-endian 先写 R）
 			long offset = ptr;
 			for(int i = 0; i < width * height; i++) {
 				int base = i * 4;
-				byte r = rgbaData[base];
-				byte g = rgbaData[base + 1];
-				byte b = rgbaData[base + 2];
-				byte a = rgbaData[base + 3];
-				MemoryUtil.memPutByte(offset,     a);
-				MemoryUtil.memPutByte(offset + 1, b);
-				MemoryUtil.memPutByte(offset + 2, g);
-				MemoryUtil.memPutByte(offset + 3, r);
+				int r = rgbaData[base] & 0xFF;
+				int g = rgbaData[base + 1] & 0xFF;
+				int b = rgbaData[base + 2] & 0xFF;
+				int a = rgbaData[base + 3] & 0xFF;
+				MemoryUtil.memPutInt(offset, (a << 24) | (b << 16) | (g << 8) | r);
 				offset += 4;
 			}
 			
@@ -194,8 +191,12 @@ public class RemoteWindowRenderer {
 	/**
 	 * 把 ARGB int 像素数组写入 NativeImage 原生内存（通过绝对 ptr）
 	 * 
-	 * 字节序：A,B,G,R（offset 0 = A 字节）
-	 * 一次写一个 byte，避免堆 ByteBuffer + putInt 的 JVM 字节序重排坑。
+	 * MC 26.x NativeImage（new NativeImage(w,h,false) → Format.RGBA）的内存布局：
+	 *   redOffset=0, greenOffset=8, blueOffset=16, alphaOffset=24
+	 * 即 little-endian 内存 [R, G, B, A]（byte0 = R）。
+	 * 
+	 * 用 memPutInt 一次写 4 字节（JVM little-endian）：
+	 *   int V = (a<<24)|(b<<16)|(g<<8)|r → 内存 [r, g, b, a] ✓
 	 */
 	private static void writeArgbPixelsToNative(long ptr, int[] argbPixels) {
 		long offset = ptr;
@@ -205,10 +206,7 @@ public class RemoteWindowRenderer {
 			int r = (argb >>> 16) & 0xFF;
 			int g = (argb >>> 8) & 0xFF;
 			int b = argb & 0xFF;
-			MemoryUtil.memPutByte(offset,     (byte) a);
-			MemoryUtil.memPutByte(offset + 1, (byte) b);
-			MemoryUtil.memPutByte(offset + 2, (byte) g);
-			MemoryUtil.memPutByte(offset + 3, (byte) r);
+			MemoryUtil.memPutInt(offset, (a << 24) | (b << 16) | (g << 8) | r);
 			offset += 4;
 		}
 	}

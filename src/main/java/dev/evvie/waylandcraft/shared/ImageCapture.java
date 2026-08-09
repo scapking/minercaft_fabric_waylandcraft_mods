@@ -70,8 +70,9 @@ public class ImageCapture {
 	private static int lastBufferWidth = 0;
 	private static int lastBufferHeight = 0;
 	
-	// 像素差异检测
-	private static byte[] lastRawFrame = null;
+	// 像素差异检测（per-window：windowHandle -> lastRawFrame）
+	// 之前是 static 单缓存，多个窗口共享时会互相覆盖基准帧，导致 diff 误判
+	private static final java.util.Map<Long, byte[]> lastRawFrames = new java.util.concurrent.ConcurrentHashMap<>();
 	
 	/**
 	 * 从WindowFramebuffer捕获图像（主入口，带全部优化）
@@ -135,6 +136,11 @@ public class ImageCapture {
 			
 			// 确保缩放FBO存在且尺寸正确
 			ensureScaleFbo(dstW, dstH);
+			
+			// 关键：ensureScaleFbo 重建时会 glBindFramebuffer(GL_FRAMEBUFFER, 0)，
+			// 把 GL_READ_FRAMEBUFFER 也解绑成 0（默认FBO=屏幕）。
+			// 必须在 blit 前重新绑定源 FBO，否则 blit 会从屏幕读取导致画面错误。
+			GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFbo);
 			
 			// Blit: 源FBO → 缩放FBO（GPU做缩放，零CPU开销）
 			GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, scaleFbo);
@@ -207,8 +213,18 @@ public class ImageCapture {
 			GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFbo);
 			GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, glTexId, 0);
 			
+			// 检查源FBO完整性：若附加纹理失败（非GL_TEXTURE_2D等），blit 会静默失败，
+			// 导致 scaleFbo 残留旧内容 → diff 永远判定"无变化"→ 永不发帧。
+			int readStatus = GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER);
+			if(readStatus != GL30.GL_FRAMEBUFFER_COMPLETE) {
+				LOGGER.error("Raw capture: source FBO incomplete: 0x{} (falling back to no-diff)", Integer.toHexString(readStatus));
+				return null;
+			}
+			
 			// GPU缩放
 			ensureScaleFbo(dstW, dstH);
+			// ensureScaleFbo 重建后会把 READ 解绑成 0，必须重新绑定
+			GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFbo);
 			GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, scaleFbo);
 			GL30.glBlitFramebuffer(0, 0, srcW, srcH, 0, 0, dstW, dstH, GL11.GL_COLOR_BUFFER_BIT, GL30.GL_LINEAR);
 			
@@ -223,8 +239,19 @@ public class ImageCapture {
 			}
 			
 			// 从缩放FBO读取
+			// 关键：MC 26.x 渲染器在 pass 之间会把 GL_READ_BUFFER 设成 GL_NONE，
+			// 必须显式指向 COLOR_ATTACHMENT0，否则 glReadPixels 报 GL_INVALID_OPERATION(0x502)。
+			// 同时解绑 PIXEL_PACK_BUFFER，避免残留 PBO 导致客户端指针被当成 offset。
 			GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, scaleFbo);
+			GL30.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
+			GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
 			GL11.glReadPixels(0, 0, dstW, dstH, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, reusableBuffer);
+			
+			int readErr = GL11.glGetError();
+			if(readErr != GL11.GL_NO_ERROR) {
+				LOGGER.error("Raw capture glReadPixels error: 0x{}", Integer.toHexString(readErr));
+				return null;
+			}
 			
 			// 转为byte[]
 			byte[] result = new byte[needed];
@@ -249,13 +276,15 @@ public class ImageCapture {
 	 * 检测像素帧是否有显著变化
 	 * 采样1/16像素，计算变化百分比
 	 * 
+	 * @param windowHandle 窗口句柄（diff 基准帧按窗口隔离）
 	 * @param currentFrame 当前帧RGBA数据
 	 * @param threshold 变化阈值（0.0-1.0），默认0.02（2%）
 	 * @return true if significant change detected
 	 */
-	public static boolean hasSignificantChange(byte[] currentFrame, float threshold) {
-		if(lastRawFrame == null || lastRawFrame.length != currentFrame.length) {
-			lastRawFrame = currentFrame.clone();
+	public static boolean hasSignificantChange(long windowHandle, byte[] currentFrame, float threshold) {
+		byte[] last = lastRawFrames.get(windowHandle);
+		if(last == null || last.length != currentFrame.length) {
+			lastRawFrames.put(windowHandle, currentFrame.clone());
 			return true;
 		}
 		
@@ -267,9 +296,9 @@ public class ImageCapture {
 		for(int i = 0; i < currentFrame.length; i += 4 * sampleStep) {
 			sampled++;
 			// 比较RGB（跳过Alpha）
-			if(currentFrame[i] != lastRawFrame[i] ||
-			   currentFrame[i+1] != lastRawFrame[i+1] ||
-			   currentFrame[i+2] != lastRawFrame[i+2]) {
+			if(currentFrame[i] != last[i] ||
+			   currentFrame[i+1] != last[i+1] ||
+			   currentFrame[i+2] != last[i+2]) {
 				changed++;
 			}
 		}
@@ -277,9 +306,23 @@ public class ImageCapture {
 		float changeRatio = sampled > 0 ? (float)changed / sampled : 1.0f;
 		
 		// 更新缓存
-		lastRawFrame = currentFrame.clone();
+		lastRawFrames.put(windowHandle, currentFrame.clone());
 		
 		return changeRatio > threshold;
+	}
+	
+	/**
+	 * 清除指定窗口的 diff 基准帧（stopSharing 时调用）
+	 */
+	public static void clearDiffCache(long windowHandle) {
+		lastRawFrames.remove(windowHandle);
+	}
+	
+	/**
+	 * 清除所有 diff 基准帧（断线时调用）
+	 */
+	public static void clearAllDiffCaches() {
+		lastRawFrames.clear();
 	}
 	
 	/**
@@ -301,11 +344,30 @@ public class ImageCapture {
 			IntBuffer pboBuf = IntBuffer.wrap(pboIds);
 			GL15.glGenBuffers(pboBuf);
 			
+			// Mesa/EGL 下 glGenBuffers 可能失败返回 0 —— 检测到无效 ID 直接降级 sync
+			if(pboIds[0] == 0 || pboIds[1] == 0) {
+				LOGGER.warn("glGenBuffers returned invalid PBO ids ({}), falling back to sync read", 
+					pboIds[0] + "," + pboIds[1]);
+				pboIds = null;
+				return readPixelsSync(width, height);
+			}
+			
+			boolean pboAllocOk = true;
 			for(int i = 0; i < 2; i++) {
 				GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[i]);
 				GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, dataSize, GL15.GL_STREAM_READ);
+				int err = GL11.glGetError();
+				if(err != GL11.GL_NO_ERROR) {
+					LOGGER.warn("PBO alloc error: 0x{} (falling back to sync read)", Integer.toHexString(err));
+					pboAllocOk = false;
+					break;
+				}
 			}
 			GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+			if(!pboAllocOk) {
+				cleanupPbos();
+				return readPixelsSync(width, height);
+			}
 			
 			pboWidth = width;
 			pboHeight = height;
@@ -329,6 +391,7 @@ public class ImageCapture {
 			GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, pboIds[seedPbo]);
 			GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, dataSize, GL15.GL_STREAM_READ);
 			GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, scaleFbo);
+			GL30.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
 			GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0L);
 			GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 			GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
@@ -349,6 +412,7 @@ public class ImageCapture {
 		GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, dataSize, GL15.GL_STREAM_READ);
 		// 从缩放FBO读取到PBO
 		GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, scaleFbo);
+		GL30.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
 		GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0L);
 		GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 		GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
@@ -377,6 +441,13 @@ public class ImageCapture {
 	
 	/**
 	 * 同步读取像素（PBO回退路径）
+	 * 
+	 * 关键修复（0x502 = GL_INVALID_OPERATION 根因）：
+	 * 1. MC 26.x 渲染器在 pass 之间会把 GL_READ_BUFFER 设成 GL_NONE，
+	 *    必须显式 glReadBuffer(GL_COLOR_ATTACHMENT0) 再读。
+	 * 2. 若 PIXEL_PACK_BUFFER 残留绑定，客户端指针会被当成 PBO offset → 0x502。
+	 *    读取前必须解绑。
+	 * 3. 读取后把 GL_READ_BUFFER 恢复为 GL_NONE（MC 的常用状态），避免破坏 MC 渲染。
 	 */
 	private static ByteBuffer readPixelsSync(int width, int height) {
 		int needed = width * height * 4;
@@ -388,11 +459,17 @@ public class ImageCapture {
 			reusableBuffer.clear();
 		}
 		
+		// 防止残留 PBO 绑定把客户端指针解释成 offset
+		GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
 		GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, scaleFbo);
+		GL30.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
 		GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, reusableBuffer);
-		GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 		
 		int glError = GL11.glGetError();
+		// 恢复 MC 常用的 read buffer 状态（GL_NONE / 默认值），避免污染后续渲染
+		GL30.glReadBuffer(GL11.GL_NONE);
+		GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+		
 		if(glError != GL11.GL_NO_ERROR) {
 			LOGGER.error("glReadPixels error: 0x{}", Integer.toHexString(glError));
 			return null;
@@ -687,7 +764,7 @@ public class ImageCapture {
 			GL11.glDeleteTextures(scaleTex);
 			scaleTex = 0;
 		}
-		lastRawFrame = null;
+		lastRawFrames.clear();
 		reusableBuffer = null;
 	}
 	

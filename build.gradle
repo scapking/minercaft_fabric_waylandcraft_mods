@@ -73,7 +73,12 @@ jar {
 	def natives = []
 
 	// Host-specific native library
-	def nativeFile = file("native/target/debug/libwaylandcraft.so")
+	// 优先使用 release 构建（3.7MB），只有 release 不存在时才退回 debug 构建。
+	// debug 构建（176MB）曾导致发布 39MB 大 jar 的问题。
+	def nativeFile = file("native/target/release/libwaylandcraft.so")
+	if(!nativeFile.exists()) {
+		nativeFile = file("native/target/debug/libwaylandcraft.so")
+	}
 	if(nativeFile.exists()) {
 		from(nativeFile)
 		natives.add("host")

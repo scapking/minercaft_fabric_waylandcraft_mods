@@ -126,8 +126,13 @@ public class SharedWindowClientHandler {
 			return;
 		}
 		
-		LOGGER.info("[CLIENT] received image for window 0x{}: {} bytes, {}x{}",
-			Long.toHexString(payload.windowHandle()), payload.imageData().length, payload.width(), payload.height());
+		// 节流：渲染线程上 JPEG 解码较慢，网络帧率（~20fps）会直接把主线程卡死，
+		// 表现为"远程画面不更新"。限制到 ~12fps 处理。
+		long now = System.currentTimeMillis();
+		if(now - info.lastImageProcessTime < 80) {
+			return;
+		}
+		info.lastImageProcessTime = now;
 		
 		// 更新图像数据
 		info.updateImage(payload.imageData(), payload.width(), payload.height());
@@ -281,6 +286,8 @@ public class SharedWindowClientHandler {
 		
 		private byte[] imageData;
 		private int imageWidth, imageHeight;
+		
+		private long lastImageProcessTime = 0;   // 图像处理节流时间戳
 		
 		private Vec3 pivot = new Vec3(0, 0, 0);
 		private Vec3 normal = new Vec3(0, 0, 1);
