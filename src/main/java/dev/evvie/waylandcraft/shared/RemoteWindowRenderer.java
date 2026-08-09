@@ -121,6 +121,63 @@ public class RemoteWindowRenderer {
 	}
 	
 	/**
+	 * 直接上传 RGBA 像素（用于 Portal ScreenCast 原始帧，不经过 JPEG 解码）
+	 * 字节顺序为 R,G,B,A
+	 */
+	public void updateTextureRGBA(long windowHandle, int width, int height, byte[] rgbaData) {
+		if(width <= 0 || height <= 0 || rgbaData == null) return;
+		if(rgbaData.length < width * height * 4) {
+			LOGGER.warn("RGBA data too small: {} bytes for {}x{}", rgbaData.length, width, height);
+			return;
+		}
+		
+		TextureEntry entry = textureCache.get(windowHandle);
+		if(entry == null || entry.width != width || entry.height != height) {
+			destroyTexture(windowHandle);
+			entry = createTexture(windowHandle, width, height);
+			if(entry == null) return;
+		}
+		
+		try {
+			NativeImage nativeImage = entry.texture.getPixels();
+			if(nativeImage == null || nativeImage.isClosed()) {
+				destroyTexture(windowHandle);
+				entry = createTexture(windowHandle, width, height);
+				if(entry == null) return;
+				nativeImage = entry.texture.getPixels();
+				if(nativeImage == null) return;
+			}
+			
+			long ptr = nativeImage.getPointer();
+			if(ptr == 0L) {
+				LOGGER.warn("NativeImage pointer is null for window 0x{}", Long.toHexString(windowHandle));
+				return;
+			}
+			
+			// NativeImage 内存布局：每像素 4 字节，通道字节序 = A,B,G,R（offset 0 = A 字节）
+			// Portal 帧是 R,G,B,A → 需要重排为 A,B,G,R
+			long offset = ptr;
+			for(int i = 0; i < width * height; i++) {
+				int base = i * 4;
+				byte r = rgbaData[base];
+				byte g = rgbaData[base + 1];
+				byte b = rgbaData[base + 2];
+				byte a = rgbaData[base + 3];
+				MemoryUtil.memPutByte(offset,     a);
+				MemoryUtil.memPutByte(offset + 1, b);
+				MemoryUtil.memPutByte(offset + 2, g);
+				MemoryUtil.memPutByte(offset + 3, r);
+				offset += 4;
+			}
+			
+			entry.texture.upload();
+			entry.lastUpdate = System.currentTimeMillis();
+		} catch(Exception e) {
+			LOGGER.error("Failed to update RGBA texture for window 0x{}", Long.toHexString(windowHandle), e);
+		}
+	}
+	
+	/**
 	 * 写入像素并上传（用于首次创建和回退）
 	 */
 	private void writePixelsAndUpload(TextureEntry entry, int[] argbPixels, int width, int height) {

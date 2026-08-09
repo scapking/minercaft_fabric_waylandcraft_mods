@@ -165,6 +165,11 @@ public class WaylandCraft implements ClientModInitializer {
 		if(windowShareManager != null) {
 			windowShareManager.update();
 		}
+		
+		// 更新 Portal 桌面捕获帧
+		if(captureManager != null) {
+			captureManager.tick();
+		}
 	}
 	
 	public void renderWorld(LevelRenderContext ctx) {

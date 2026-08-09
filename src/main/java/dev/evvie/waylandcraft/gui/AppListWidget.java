@@ -1,24 +1,23 @@
 package dev.evvie.waylandcraft.gui;
 
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 import dev.evvie.waylandcraft.desktop.DesktopEntry;
+import dev.evvie.waylandcraft.gui.theme.PanelRenderer;
+import dev.evvie.waylandcraft.gui.theme.WcColors;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractContainerWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 
+/**
+ * 应用列表 —— 霓虹滚动列表（圆角面板 + 霓虹滚动条）。
+ */
 public class AppListWidget extends AbstractContainerWidget {
-	
-	private static final Identifier SCROLLER_SPRITE = Identifier.withDefaultNamespace("widget/scroller");
-	private static final Identifier SCROLLER_BACKGROUND_SPRITE = Identifier.withDefaultNamespace("widget/scroller_background");
 	
 	private static final int SLOT_GAPS = 2;
 	public static final int ELEMENT_WIDTH = 200 + 2;
@@ -115,8 +114,9 @@ public class AppListWidget extends AbstractContainerWidget {
 		int width = ELEMENT_WIDTH;
 		int height = getHeight();
 		
-		context.outline(x - 1, y - 1, width + 2, height + 2, Color.black.getRGB());
-		context.outline(x - 2, y - 2, width + 4, height + 4, Color.black.getRGB());
+		// 列表底（圆角面板）
+		PanelRenderer.field(context, x - 1, y - 1, width + 2, height + 2);
+		PanelRenderer.overlay(context, x - 1, y - 1, width + 2, height + 2, WcColors.DIM_MASK);
 		
 		context.enableScissor(x, y, x + width, y + height);
 		
@@ -128,7 +128,7 @@ public class AppListWidget extends AbstractContainerWidget {
 		
 		int scrollerX = x + width + 8;
 		int scrollerY = y - 2;
-		int scrollerWidth = 6;
+		int scrollerWidth = 4;
 		int scrollerHeight = height + 4;
 		
 		int scrollerSize = Math.round(height / (float) contentHeight * scrollerHeight);
@@ -139,8 +139,9 @@ public class AppListWidget extends AbstractContainerWidget {
 			scrollerPos = 0;
 		}
 		
-		context.blitSprite(RenderPipelines.GUI_TEXTURED, SCROLLER_BACKGROUND_SPRITE, scrollerX, scrollerY, scrollerWidth, scrollerHeight);
-		context.blitSprite(RenderPipelines.GUI_TEXTURED, SCROLLER_SPRITE, scrollerX, scrollerY + scrollerPos, scrollerWidth, scrollerSize);
+		// 霓虹滚动条
+		context.fill(scrollerX, scrollerY, scrollerX + scrollerWidth, scrollerY + scrollerHeight, WcColors.PANEL_INSET);
+		context.fill(scrollerX, scrollerY + scrollerPos, scrollerX + scrollerWidth, scrollerY + scrollerPos + scrollerSize, WcColors.CYAN);
 	}
 	
 	@Override
@@ -167,7 +168,7 @@ public class AppListWidget extends AbstractContainerWidget {
 		
 		int scrollerX = x + width + 8;
 		int scrollerY = y - 2;
-		int scrollerWidth = 6;
+		int scrollerWidth = 4;
 		int scrollerHeight = height + 4;
 		
 		if(event.x() >= scrollerX && event.x() <= scrollerX + scrollerWidth && event.y() >= scrollerY && event.y() <= scrollerY + scrollerHeight) {

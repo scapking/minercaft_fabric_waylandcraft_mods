@@ -33,15 +33,21 @@ fn gdbus_call(args: &[&str]) -> Result<String, String> {
 }
 
 /// 等待 D-Bus Response 信号（通过 gdbus monitor）
+///
+/// 注意：`gdbus monitor` 是持续监听的，收到目标信号后不会自行退出。
+/// 早期实现用 `timeout` 包住它，导致每次调用都要等满超时（CreateSession 10s
+/// + SelectSources 10s + Start 60s = 至少 80 秒）才能返回，表现为"捕获不可用"。
+/// 这里改为 `gdbus monitor | grep -m1 Response`：grep 匹配到第一个 Response 就
+/// 退出，管道关闭后 gdbus monitor 因 SIGPIPE 退出，timeout 只是兜底。
 fn wait_portal_response(request_path: &str, timeout_secs: u64) -> Result<(u32, String), String> {
-    // gdbus monitor 会监听信号，我们用 timeout 包装
-    let output = std::process::Command::new("timeout")
-        .args(&[
-            &timeout_secs.to_string(),
-            "gdbus", "monitor", "--session",
-            "--dest", "org.freedesktop.portal.Desktop",
-            "--object-path", request_path,
-        ])
+    let shell_cmd = format!(
+        "timeout {} gdbus monitor --session --dest org.freedesktop.portal.Desktop --object-path '{}' | grep -m1 -E 'Response'",
+        timeout_secs,
+        request_path
+    );
+
+    let output = std::process::Command::new("sh")
+        .args(&["-c", &shell_cmd])
         .env("DBUS_SESSION_BUS_ADDRESS",
              std::env::var("DBUS_SESSION_BUS_ADDRESS")
                  .unwrap_or_else(|_| format!("unix:path=/run/user/{}/bus", unsafe { libc::getuid() })))
@@ -49,22 +55,40 @@ fn wait_portal_response(request_path: &str, timeout_secs: u64) -> Result<(u32, S
         .map_err(|e| format!("monitor: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout.lines().next().unwrap_or("").trim();
 
-    // 解析: Response(uint32 0, @a{sv} {...})
-    for line in stdout.lines() {
-        if line.contains("Response") {
-            // 提取 code (第一个数字)
-            let code = line
-                .split(|c: char| !c.is_ascii_digit())
-                .find(|s| !s.is_empty())
-                .and_then(|s| s.parse::<u32>().ok())
-                .unwrap_or(0);
+    if line.contains("Response") {
+        // 解析: Response (uint32 0, @a{sv} {...})
+        // code 是行内第一个数字（uint32 后的值）
+        let code = line
+            .split(|c: char| !c.is_ascii_digit())
+            .find(|s| !s.is_empty())
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
 
-            return Ok((code, line.to_string()));
-        }
+        return Ok((code, line.to_string()));
     }
 
     Err(format!("no Response signal received (timeout={}s)", timeout_secs))
+}
+
+/// 从 CreateSession 的 Response 信号中提取 session_handle
+/// Response 行形如:
+///   ... org.freedesktop.portal.Request.Response (uint32 0, {'session_handle': <'/org/freedesktop/portal/desktop/session/1_xxx/wcs1'>, ...})
+fn extract_session_handle(response: &str) -> Option<String> {
+    if let Some(pos) = response.find("session_handle") {
+        let rest = &response[pos..];
+        if let Some(q1) = rest.find('\'') {
+            let after = &rest[q1 + 1..];
+            if let Some(q2) = after.find('\'') {
+                let path = &after[..q2];
+                if path.starts_with("/org/freedesktop/portal/desktop/session/") {
+                    return Some(path.to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// 通过 XDG Desktop Portal ScreenCast 启动捕获
@@ -83,11 +107,13 @@ pub fn start_portal_capture() -> Result<u32, String> {
     let req1 = extract_object_path(&out)?;
     eprintln!("[portal] CreateSession req: {}", req1);
 
-    let (code, _) = wait_portal_response(&req1, 10)?;
+    let (code, create_response) = wait_portal_response(&req1, 10)?;
     if code != 0 { return Err(format!("CreateSession failed: {}", code)); }
-    // session_handle 从 Response 中提取 (下次用 gdbus call 的 async 版本)
-    // 暂时用固定路径模式
-    let session = req1.replace("/request/", "/session/").replace("wcr1", "wcs1");
+    // session_handle 从 Response 中提取，而不是靠固定 token 硬编码推导
+    // （硬编码 replace("wcr1","wcs1") 依赖 handle_token 恰好是 wcr1/wcs1，
+    //   一旦 portal 返回不同 token 就会得到错误路径）
+    let session = extract_session_handle(&create_response)
+        .ok_or("CreateSession: cannot extract session_handle")?;
     eprintln!("[portal] Session: {}", session);
 
     // 2. SelectSources
@@ -138,14 +164,15 @@ fn extract_object_path(s: &str) -> Result<String, String> {
 
 fn extract_node_id_from_response(response: &str) -> Result<u32, String> {
     // Response 格式: Response(uint32 0, @a{sv} {...streams: [(uint32 NODE_ID, {...})]...})
-    // 查找 streams 后面的第一个数字
+    // 查找 "streams" 后面的第一个数字——那就是 node_id。
+    // 之前用 "id > 100" 过滤，会漏掉小于 100 的节点 ID（例如 42），改为取第一个数字。
     if let Some(pos) = response.find("streams") {
         let rest = &response[pos..];
-        // 找到第一个 uint32 或数字
         for part in rest.split(|c: char| !c.is_ascii_digit()) {
             if !part.is_empty() {
                 if let Ok(id) = part.parse::<u32>() {
-                    if id > 100 { // 排除小数字 (code 等)
+                    // 节点 ID 通常 > 0；排除掉 0 避免误抓其他 0
+                    if id > 0 {
                         return Ok(id);
                     }
                 }
@@ -153,18 +180,35 @@ fn extract_node_id_from_response(response: &str) -> Result<u32, String> {
         }
     }
 
-    // 备选：查找所有大数字
-    for part in response.split(|c: char| !c.is_ascii_digit()) {
-        if !part.is_empty() {
-            if let Ok(id) = part.parse::<u32>() {
-                if id > 1000 {
-                    return Ok(id);
-                }
-            }
-        }
-    }
-
     Err(format!("cannot extract node ID from: {}", &response[..response.len().min(500)]))
+}
+
+/// 把 PipeWire 常见的 BGRx/BGRA/RGBA 帧统一转换为 RGBA（每像素4字节，R,G,B,A）
+fn convert_to_rgba(src: &[u8], fmt: pw::spa::param::video::VideoFormat) -> Vec<u8> {
+    // 宽松的 BGR 判断：VideoFormat 枚举里 BGRx/BGRA 都是 BGR 序
+    let bgr = matches!(
+        fmt,
+        pw::spa::param::video::VideoFormat::BGRx
+            | pw::spa::param::video::VideoFormat::BGRA
+    );
+
+    let mut out = Vec::with_capacity(src.len());
+    // 按 4 字节一组处理；末尾不足 4 字节的直接原样拷贝
+    let mut i = 0;
+    while i + 4 <= src.len() {
+        let b = src[i];
+        let g = src[i + 1];
+        let r = src[i + 2];
+        let a = src[i + 3];
+        if bgr {
+            out.extend_from_slice(&[r, g, b, a]);
+        } else {
+            out.extend_from_slice(&[b, g, r, a]);
+        }
+        i += 4;
+    }
+    out.extend_from_slice(&src[i..]);
+    out
 }
 
 /// 连接 PipeWire 节点并读取帧
@@ -233,9 +277,13 @@ fn pw_stream_loop(node_id: u32, frame_data: Arc<Mutex<Option<FrameData>>>) -> Re
                         if let Some(slice) = data.data() {
                             let w = user_data.size().width;
                             let h = user_data.size().height;
+                            // 统一转换为 RGBA（PipeWire 可能给 BGRx/BGRA/RGBA）
+                            let fmt = user_data.format();
+                            let src = &slice[..size.min(slice.len())];
+                            let data = convert_to_rgba(src, fmt);
                             let mut frame = frame_ref.lock().unwrap();
                             *frame = Some(FrameData {
-                                data: slice[..size.min(slice.len())].to_vec(),
+                                data,
                                 width: w,
                                 height: h,
                             });
@@ -265,7 +313,6 @@ fn pw_stream_loop(node_id: u32, frame_data: Arc<Mutex<Option<FrameData>>>) -> Re
             Choice,
             Enum,
             Id,
-            pw::spa::param::video::VideoFormat::BGRx,
             pw::spa::param::video::VideoFormat::BGRx,
             pw::spa::param::video::VideoFormat::BGRA,
             pw::spa::param::video::VideoFormat::RGBA,

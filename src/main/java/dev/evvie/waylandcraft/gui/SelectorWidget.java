@@ -1,19 +1,19 @@
 package dev.evvie.waylandcraft.gui;
 
-import java.awt.Color;
 import java.util.ArrayList;
 
 import org.jetbrains.annotations.Nullable;
 
+import dev.evvie.waylandcraft.gui.theme.PanelRenderer;
+import dev.evvie.waylandcraft.gui.theme.WcColors;
+import dev.evvie.waylandcraft.gui.theme.WcTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
@@ -149,12 +149,6 @@ public abstract class SelectorWidget<T> extends AbstractWidget {
 			super(x, y, width, height, Component.empty(), (b) -> {widget.select(((SelectorButton<T>) b).element);}, (c) -> c.get());
 		}
 		
-		private static final WidgetSprites SPRITES = new WidgetSprites(
-				Identifier.withDefaultNamespace("widget/button"),
-				Identifier.withDefaultNamespace("widget/button_disabled"),
-				Identifier.withDefaultNamespace("widget/button_highlighted")
-		);
-		
 		@Override
 		protected void extractContents(GuiGraphicsExtractor context, int i, int j, float f) {
 			int x = getX();
@@ -162,10 +156,21 @@ public abstract class SelectorWidget<T> extends AbstractWidget {
 			int width = getWidth();
 			int height = getHeight();
 			
-			Color color = dimColor ? Color.lightGray : Color.white;
 			Font font = Minecraft.getInstance().font;
 			
-			context.blitSprite(RenderPipelines.GUI_TEXTURED, SPRITES.get(active, selected), x, y, width, height);
+			// 霓虹选中/悬停样式
+			if(selected) {
+				PanelRenderer.neonFilled(context, x, y, width, height);
+				PanelRenderer.neonBorder(context, x, y, width, height);
+			}
+			else {
+				PanelRenderer.field(context, x, y, width, height);
+				if(isHovered()) {
+					PanelRenderer.overlay(context, x, y, width, height, WcColors.HOVER_MASK);
+					PanelRenderer.neonBorder(context, x, y, width, height);
+				}
+			}
+			
 			context.enableScissor(x + 2, y, x + width - 2, y + height);
 			
 			int xoff = x + 2;
@@ -176,7 +181,8 @@ public abstract class SelectorWidget<T> extends AbstractWidget {
 				xoff += iconSize + 2;
 			}
 			
-			context.text(font, getMessage(), xoff, y + height / 2 - font.lineHeight / 2, color.getRGB());
+			int color = selected ? WcColors.TEXT_ON_NEON : (dimColor ? WcColors.TEXT_DIM : WcColors.TEXT);
+			context.text(font, getMessage(), xoff, y + height / 2 - font.lineHeight / 2, color);
 			context.disableScissor();
 		}
 		

@@ -3,17 +3,20 @@ package dev.evvie.waylandcraft.gui;
 import java.util.List;
 import java.util.function.Consumer;
 
+import dev.evvie.waylandcraft.gui.theme.PanelRenderer;
+import dev.evvie.waylandcraft.gui.theme.WcColors;
 import net.minecraft.client.gui.ComponentPath;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.navigation.FocusNavigationEvent;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
+/**
+ * 分类选择器 —— 霓虹图标按钮列。
+ */
 public class CategorySelectorWidget extends AbstractWidget {
 	
 	private int selected = -1;
@@ -49,12 +52,6 @@ public class CategorySelectorWidget extends AbstractWidget {
 		return null;
 	}
 	
-	private static final WidgetSprites BUTTON_SPRITES = new WidgetSprites(
-			Identifier.withDefaultNamespace("widget/button"),
-			Identifier.withDefaultNamespace("widget/button_disabled"),
-			Identifier.withDefaultNamespace("widget/button_highlighted")
-	);
-	
 	private int elementsPerColumn() {
 		return getHeight() / elementSize;
 	}
@@ -72,11 +69,23 @@ public class CategorySelectorWidget extends AbstractWidget {
 		for(int i = 0; i < entries.size(); i++) {
 			int bx = idxPosX(i);
 			int by = idxPosY(i);
+			boolean hovered = mouseX > bx && mouseY > by && mouseX < bx + elementSize && mouseY < by + elementSize;
+			boolean isSel = i == selected;
 			
-			context.blitSprite(RenderPipelines.GUI_TEXTURED, BUTTON_SPRITES.get(active, i == selected), bx, by, elementSize, elementSize);
-			context.blitSprite(RenderPipelines.GUI_TEXTURED, entries.get(i).icon, bx + 2, by + 2, 15, 15);
+			// 底
+			if(isSel) {
+				PanelRenderer.neonFilled(context, bx, by, elementSize, elementSize);
+				PanelRenderer.neonBorder(context, bx, by, elementSize, elementSize);
+			}
+			else {
+				PanelRenderer.field(context, bx, by, elementSize, elementSize);
+				if(hovered) PanelRenderer.overlay(context, bx, by, elementSize, elementSize, WcColors.HOVER_MASK);
+			}
 			
-			if(mouseX > bx && mouseY > by && mouseX < bx + elementSize && mouseY < by + elementSize) {
+			int iconPad = 2;
+			context.blit(entries.get(i).icon, bx + iconPad, by + iconPad, bx + elementSize - iconPad, by + elementSize - iconPad, 0.0f, 1.0f, 0.0f, 1.0f);
+			
+			if(hovered) {
 				context.setTooltipForNextFrame(entries.get(i).title, mouseX, mouseY);
 			}
 		}

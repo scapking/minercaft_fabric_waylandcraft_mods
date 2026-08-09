@@ -1,7 +1,5 @@
 package dev.evvie.waylandcraft.gui;
 
-import java.awt.Color;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Optional;
@@ -20,37 +18,39 @@ import dev.evvie.waylandcraft.bridge.WaylandCraftBridge;
 import dev.evvie.waylandcraft.bridge.WaylandCraftBridge.Size;
 import dev.evvie.waylandcraft.desktop.DesktopEntry;
 import dev.evvie.waylandcraft.grabs.WindowGrab;
+import dev.evvie.waylandcraft.gui.theme.PanelRenderer;
+import dev.evvie.waylandcraft.gui.theme.WcColors;
+import dev.evvie.waylandcraft.gui.theme.WcTheme;
+import dev.evvie.waylandcraft.gui.widgets.NeonButton;
+import dev.evvie.waylandcraft.gui.widgets.NeonIconButton;
 import dev.evvie.waylandcraft.mixin.IMouseHandlerMixin;
 import dev.evvie.waylandcraft.render.RenderUtils;
 import dev.evvie.waylandcraft.render.WindowFramebuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.ImageWidget;
 import net.minecraft.client.gui.components.PopupScreen;
-import net.minecraft.client.gui.components.SpriteIconButton;
 import net.minecraft.client.gui.components.StringWidget;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.ARGB;
 
 public class WindowManagerScreen extends Screen {
 	
 	private WaylandCraft wlc;
 	
 	private SelectorWidget<WLCToplevel> selector;
-	private ArrayList<Button> buttons = new ArrayList<Button>();
-	private Button grabButton;
-	private Button resizeButton;
-	private Button hideButton;
-	private Button pinButton;
-	private Button itemButton;
-	private Button helpButton;
+	private ArrayList<AbstractWidget> buttons = new ArrayList<AbstractWidget>();
+	private NeonButton grabButton;
+	private NeonButton resizeButton;
+	private NeonIconButton hideButton;
+	private NeonIconButton pinButton;
+	private NeonIconButton itemButton;
+	private NeonIconButton helpButton;
 	
 	private StringWidget captureModeMessage;
 	private ImageWidget captureModeSprite;
@@ -117,57 +117,37 @@ public class WindowManagerScreen extends Screen {
 		};
 		addRenderableWidget(selector);
 		
-		grabButton = Button.builder(Component.literal("Grab"), this::onGrabPressed)
-				.pos(width - buttonWidth - margin + 1, margin)
-				.size(buttonWidth, buttonHeight)
-				.build();
+		grabButton = new NeonButton(width - buttonWidth - margin + 1, margin, buttonWidth, buttonHeight,
+				Component.literal("Grab"), () -> onGrabPressed());
 		buttons.add(grabButton);
 		
-		resizeButton = Button.builder(Component.literal("Resize"), this::onResizePressed)
-				.pos(width / 2 - buttonWidth / 2, margin)
-				.size(buttonWidth, buttonHeight)
-				.build();
+		resizeButton = new NeonButton(width / 2 - buttonWidth / 2, margin, buttonWidth, buttonHeight,
+				Component.literal("Resize"), () -> onResizePressed());
 		buttons.add(resizeButton);
 		
-		Component fullscreenComponent = Component.literal("Capture Mode").withColor(ARGB.color(255, 0, 0));
-		captureModeMessage = new StringWidget(leftMargin + 18, margin - 1, buttonWidth, buttonHeight, fullscreenComponent, font);
+		Component captureModeComponent = Component.literal("Capture Mode").withColor(WcColors.CYAN);
+		captureModeMessage = new StringWidget(leftMargin + 18, margin - 1, buttonWidth, buttonHeight, captureModeComponent, font);
 		captureModeSprite = ImageWidget.sprite(15, 15, Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "capture"));
 		captureModeSprite.setPosition(leftMargin - 1, margin);
 		
-		hideButton = SpriteIconButton.builder(Component.literal("Hide"), this::onHidePressed, true)
-				.sprite(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "hide"), 15, 15)
-				.size(22, 22)
-				.build();
-		hideButton.setPosition(3, topMargin);
-		hideButton.setTooltip(Tooltip.create(Component.literal("Hide")));
-		hideButton.setTooltipDelay(Duration.ofMillis(700));
+		hideButton = new NeonIconButton(3, topMargin, 22,
+				Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "hide"), 15,
+				Component.literal("Hide"), () -> onHidePressed());
 		buttons.add(hideButton);
 		
-		pinButton = SpriteIconButton.builder(Component.literal("Pin"), this::onPinPressed, true)
-				.sprite(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "pin"), 15, 15)
-				.size(22, 22)
-				.build();
-		pinButton.setPosition(3, topMargin + 30);
-		pinButton.setTooltip(Tooltip.create(Component.literal("Pin")));
-		pinButton.setTooltipDelay(Duration.ofMillis(700));
+		pinButton = new NeonIconButton(3, topMargin + 30, 22,
+				Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "pin"), 15,
+				Component.literal("Pin"), () -> onPinPressed());
 		buttons.add(pinButton);
 		
-		itemButton = SpriteIconButton.builder(Component.literal("Give Window Item"), this::onItemPressed, true)
-				.sprite(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "window"), 16, 16)
-				.size(22, 22)
-				.build();
-		itemButton.setPosition(3, topMargin + 60);
-		itemButton.setTooltip(Tooltip.create(Component.literal("Give Window Item")));
-		itemButton.setTooltipDelay(Duration.ofMillis(700));
+		itemButton = new NeonIconButton(3, topMargin + 60, 22,
+				Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "window"), 16,
+				Component.literal("Give Window Item"), () -> onItemPressed());
 		buttons.add(itemButton);
 		
-		helpButton = SpriteIconButton.builder(Component.literal("Help"), this::onHelpPressed, true)
-				.sprite(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "help"), 15, 15)
-				.size(22, 22)
-				.build();
-		helpButton.setPosition(3, height - 22 - margin);
-		helpButton.setTooltip(Tooltip.create(Component.literal("Help")));
-		helpButton.setTooltipDelay(Duration.ofMillis(700));
+		helpButton = new NeonIconButton(3, height - 22 - margin, 22,
+				Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "help"), 15,
+				Component.literal("Help"), () -> onHelpPressed());
 		buttons.add(helpButton);
 		
 		addRenderableWidget(grabButton);
@@ -182,20 +162,20 @@ public class WindowManagerScreen extends Screen {
 		wlc.bridge.activateKeyboard();
 	}
 	
-	private void onGrabPressed(Button button) {
+	private void onGrabPressed() {
 		if(focused == null) return;
 		
 		wlc.pointerGrabs.startExclusive(new WindowGrab(wlc.getOrCreateDisplay(focused), 0));
 		this.onClose();
 	}
 	
-	private void onHidePressed(Button button) {
+	private void onHidePressed() {
 		if(focused == null) return;
 		
 		wlc.displays.removeIf((w) -> w.window == focused);
 	}
 	
-	private void onResizePressed(Button button) {
+	private void onResizePressed() {
 		if(focused == null || focused.fullscreen) return;
 		
 		wlc.bridge.sendMotionOutside();
@@ -208,19 +188,19 @@ public class WindowManagerScreen extends Screen {
 		resizeLastX = resizeLastY = Double.NaN;
 	}
 	
-	private void onPinPressed(Button button) {
+	private void onPinPressed() {
 		if(focused == null) return;
 		
 		if(wlc.pinnedToplevel != focused) wlc.pinnedToplevel = focused;
 		else wlc.pinnedToplevel = null;
 	}
 	
-	private void onItemPressed(Button button) {
+	private void onItemPressed() {
 		if(focused == null) return;
 		wlc.itemManager.giveItem(focused);
 	}
 	
-	private void onHelpPressed(Button button) {
+	private void onHelpPressed() {
 		if(resizeMode) return;
 		String message = """
 				You can see your windows here.
@@ -265,7 +245,11 @@ public class WindowManagerScreen extends Screen {
 	public void extractRenderState(GuiGraphicsExtractor context, int i, int j, float f) {
 		super.extractBlurredBackground(context);
 		
-		context.outline(leftMargin - 1, topMargin - 1, areaWidth + 2, areaHeight + 2, Color.white.getRGB());
+		// 工作区底：深空遮罩 + 玻璃面板
+		context.fill(0, 0, width, height, WcColors.BG_BASE);
+		PanelRenderer.panel(context, leftMargin - 4, topMargin - 4, areaWidth + 8, areaHeight + 8);
+		context.outline(leftMargin - 1, topMargin - 1, areaWidth + 2, areaHeight + 2, WcColors.BORDER_FOCUS);
+		context.outline(leftMargin - 2, topMargin - 2, areaWidth + 4, areaHeight + 4, WcColors.CYAN_GLOW);
 		
 		guiScale = (int) Minecraft.getInstance().getWindow().getGuiScale();
 		wlc.bridge.setOutputBounds(areaWidth * guiScale, areaHeight * guiScale);

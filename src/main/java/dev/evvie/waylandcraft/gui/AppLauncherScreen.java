@@ -1,6 +1,5 @@
 package dev.evvie.waylandcraft.gui;
 
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -8,6 +7,8 @@ import java.util.List;
 import dev.evvie.waylandcraft.WaylandCraft;
 import dev.evvie.waylandcraft.WaylandCraftCommon;
 import dev.evvie.waylandcraft.desktop.DesktopEntry;
+import dev.evvie.waylandcraft.gui.theme.PanelRenderer;
+import dev.evvie.waylandcraft.gui.theme.WcColors;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -147,11 +148,22 @@ public class AppLauncherScreen extends Screen {
 	
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float partialTicks) {
+		// 深空背景
+		context.fill(0, 0, width, height, WcColors.BG_BASE);
+		
+		// 主面板
+		int panelX = width / 2 - AppListWidget.DEFAULT_WIDTH / 2 - 20;
+		int panelY = 4;
+		int panelW = AppListWidget.DEFAULT_WIDTH + 40;
+		int panelH = height - 8;
+		PanelRenderer.panel(context, panelX, panelY, panelW, panelH);
+		
 		super.extractRenderState(context, mouseX, mouseY, partialTicks);
 		searchBox.extractRenderState(context, mouseX, mouseY, partialTicks);
 		
 		if(searchBox.getY() >= 5 + font.lineHeight + 5) {
-			context.text(font, header, width / 2 - font.width(header) / 2, 5, Color.white.getRGB());
+			Component headerText = header.copy().withColor(WcColors.CYAN);
+			context.text(font, headerText, width / 2 - font.width(headerText) / 2, 5, WcColors.CYAN);
 		}
 	}
 	

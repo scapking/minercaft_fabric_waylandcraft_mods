@@ -78,20 +78,17 @@ fn build_env_list(app_type: &str, wayland_display: &str) -> Vec<(String, String)
 }
 
 /// 为 flatpak 注入 --env= 和 --filesystem= 参数
-fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, runtime_dir: &str) {
-    // 关键：让 flatpak 沙箱能看到 wayland socket 文件
-    let socket_path = format!("{}/{}", runtime_dir, wayland_display);
-    let fs_arg = format!("--filesystem={}", socket_path);
-    
-    let env_vars = vec![
-        format!("WAYLAND_DISPLAY={}", wayland_display),
-        "GDK_BACKEND=wayland".to_string(),
-        "QT_QPA_PLATFORM=wayland".to_string(),
-        "ELECTRON_OZONE_PLATFORM_HINT=auto".to_string(),
-    ];
-    
+///
+/// 修复说明：
+/// 1. 之前注入 `--filesystem={runtime_dir}/{wayland_display}`（单个 socket 文件的宿主绝对路径），
+///    但 flatpak 沙箱内有自己的 /run/user/<uid>，宿主 XDG_RUNTIME_DIR 默认不可见，
+///    所以该路径在沙箱内不可达 → 注入无效。正确做法是用 flatpak 的特殊值
+///    `--filesystem=xdg-run` 暴露整个宿主 XDG_RUNTIME_DIR。
+/// 2. 之前找不到 app_id 时 insert_pos 保持 0，会把选项插到最前面（甚至插到 `run` 之前），
+///    导致 flatpak 报错。现在找不到就追加到末尾。
+fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str) {
     // 找到 app_id 的位置（run 之后第一个非选项参数）
-    let mut insert_pos = 0;
+    let mut insert_pos = None;
     let mut found_run = false;
     for (i, arg) in args.iter().enumerate() {
         if arg == "run" {
@@ -99,22 +96,25 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, runtime_dir
             continue;
         }
         if found_run && !arg.starts_with('-') {
-            insert_pos = i;
+            insert_pos = Some(i);
             break;
         }
     }
-    
-    // 注入 --filesystem= 让沙箱能看到 socket
-    log(&format!("[flatpak] injecting: {}", fs_arg));
-    args.insert(insert_pos, fs_arg);
-    insert_pos += 1;
-    
-    // 注入 --env= 参数
-    for env_var in env_vars {
-        let env_arg = format!("--env={}", env_var);
-        log(&format!("[flatpak] injecting: {}", env_arg));
-        args.insert(insert_pos, env_arg);
-        insert_pos += 1;
+    let insert_pos = insert_pos.unwrap_or(args.len());
+
+    // flatpak run 的选项必须放在 run 之后、app_id 之前
+    let opts = vec![
+        // 暴露宿主 XDG_RUNTIME_DIR，让沙箱内能看到 wayland socket
+        "--filesystem=xdg-run".to_string(),
+        format!("--env=WAYLAND_DISPLAY={}", wayland_display),
+        "--env=GDK_BACKEND=wayland".to_string(),
+        "--env=QT_QPA_PLATFORM=wayland".to_string(),
+        "--env=ELECTRON_OZONE_PLATFORM_HINT=auto".to_string(),
+    ];
+
+    for (offset, opt) in opts.iter().enumerate() {
+        log(&format!("[flatpak] injecting: {}", opt));
+        args.insert(insert_pos + offset, opt.clone());
     }
 }
 
@@ -176,7 +176,7 @@ pub fn spawn(
     
     let (final_cmd, final_args) = if app_type == "flatpak" {
         let mut flatpak_args = args.clone();
-        inject_flatpak_env(&mut flatpak_args, &wayland_display, &runtime_dir);
+        inject_flatpak_env(&mut flatpak_args, &wayland_display);
         log(&format!("[flatpak] final args={:?}", flatpak_args));
         (cmd.clone(), flatpak_args)
     } else {
@@ -206,7 +206,12 @@ pub fn spawn(
         .args(&final_args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::null())
+        // 统一给子进程设置正确的 Wayland 环境
+        // （flatpak 运行器需要宿主 XDG_RUNTIME_DIR 才能用 --filesystem=xdg-run 构建沙箱）
+        .env("WAYLAND_DISPLAY", &wayland_display)
+        .env("XDG_RUNTIME_DIR", &runtime_dir)
+        .env("DISPLAY", "");
 
     match unsafe { libc::fork() } {
         0 => {

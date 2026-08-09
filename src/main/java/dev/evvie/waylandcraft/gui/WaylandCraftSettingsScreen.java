@@ -3,6 +3,9 @@ package dev.evvie.waylandcraft.gui;
 import java.util.ArrayList;
 
 import dev.evvie.waylandcraft.WaylandCraft;
+import dev.evvie.waylandcraft.gui.theme.PanelRenderer;
+import dev.evvie.waylandcraft.gui.theme.WcColors;
+import dev.evvie.waylandcraft.gui.theme.WcTheme;
 import dev.evvie.waylandcraft.settings.WaylandCraftSettings;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.ScrollableLayout;
@@ -29,25 +32,31 @@ public class WaylandCraftSettingsScreen extends Screen {
 	@Override
 	protected void init() {
 		createSettings();
-		
+
+		// 霓虹标题
+		Component styledTitle = Component.literal(title.getString()).withColor(WcColors.CYAN);
 		FrameLayout header = new FrameLayout(0, 0, width, 25);
-		header.addChild(new StringWidget(title, font), LayoutSettings.defaults().align(0.5f, 0.5f));
+		header.addChild(new StringWidget(styledTitle, font), LayoutSettings.defaults().align(0.5f, 0.5f));
 		header.arrangeElements();
 		header.visitWidgets((w) -> addRenderableWidget(w));
-		
+
 		LinearLayout content = LinearLayout.vertical().spacing(4);
 		for(SettingsWidget widget : settingsWidgets) {
 			content.addChild(widget);
 		}
-		
+
 		layout = new ScrollableLayout(minecraft, content, height - 75);
 		layout.setPosition(width / 2 - SettingsWidget.WIDTH / 2 - 25 / 2, 50);
 		layout.arrangeElements();
 		layout.visitWidgets((w) -> addRenderableWidget(w));
 	}
-	
+
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
+		// 深空背景遮罩
+		graphics.fill(0, 0, width, height, WcColors.BG_BASE);
+		PanelRenderer.panel(graphics, width / 2 - SettingsWidget.WIDTH / 2 - 25 / 2 - 10, 40,
+				SettingsWidget.WIDTH + 25 + 20, height - 60);
 		super.extractRenderState(graphics, mouseX, mouseY, a);
 	}
 	
