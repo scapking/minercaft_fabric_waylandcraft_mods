@@ -307,7 +307,8 @@ public class WaylandCraft implements ClientModInitializer {
 	
 	private void updateDisplayRequests() {
 		// Hide all windows that were minimized and unset minimize requested state
-		displays.removeIf((w) -> w.window instanceof WLCToplevel && ((WLCToplevel) w.window).requests.minimize);
+		// 钉住的窗口（pinnedToplevel）不受 minimize 影响，保持在世界中显示
+		displays.removeIf((w) -> w.window instanceof WLCToplevel && ((WLCToplevel) w.window) != pinnedToplevel && ((WLCToplevel) w.window).requests.minimize);
 		Stream.of(bridge.getToplevels()).forEach((t) -> t.requests.minimize = false);
 		
 		// Handle any maximize or unmaximize requests
