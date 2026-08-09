@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.7-brightgreen" />
 </p>
 
 ---
 
 ## ダウンロード
 
-👉 **[最新リリース (v0.2.6)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
+👉 **[最新リリース (v0.2.7)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
 
 > 上流リポジトリ（almightydb）の Releases ページは更新が遅れています。最新版は上記リンクから取得してください。
 
@@ -89,7 +89,7 @@
 
 ## コマンド
 
-`<handle>` は 3 形式に対応: `0x` 短ハンドル / 完全ハンドル / ウィンドウ別名（例 `firefox_esr`）。同名ウィンドウが複数ある場合は `別名:N`（例 `firefox:2`）で指定します。
+`<handle>` は 4 形式に対応: `0x` 短ハンドル / 完全ハンドル / **インスタンス別名 `wN`（`/wl list windows` で表示、セッション内で一意）** / アプリ別名（例 `firefox_esr`）。同名ウィンドウが複数ある場合は `別名:N`（例 `firefox:2`）で指定します。
 
 ### ウィンドウ管理
 
@@ -109,6 +109,13 @@
 | `/wl unpin <handle>` | ピン留め解除 |
 | `/wl close <handle>` | アプリを終了（ウィンドウを閉じる） |
 | `/wl resize <handle> <w> <h>` | ウィンドウ解像度を変更 |
+| `/wl pos <handle>` | ウィンドウの位置（x/y/z）、向き、拡大率、解像度を表示 |
+| `/wl template save <name>` | 現在のチャンク内の全ウィンドウ配置を一時テンプレートとして保存（再起動で消える） |
+| `/wl template savep <name>` | 永続テンプレートを保存（アプリ + 位置 + 解像度、ディスクへ書き込み） |
+| `/wl template apply <name>` | 一時テンプレートを適用し、ウィンドウ位置を復元 |
+| `/wl template applyp <name>` | 永続テンプレートを適用：アプリを自動起動して記録どおりに配置 |
+| `/wl template list` | 全テンプレートを一覧表示 |
+| `/wl template remove <name>` / `removep <name>` | 一時 / 永続テンプレートを削除 |
 
 ### 共有管理
 
@@ -178,6 +185,7 @@
 
 ## 注意事項
 
+- **ウィンドウは常に垂直**：ウィンドウは常に直立配置（傾け不可）、ドラッグ中は垂直軸（y）が固定され水平移動のみ、ウィンドウ下端はその地点の地面より常に 2 ブロック以上上に保たれます。`Ctrl+ホイール` で向きを回転（垂直のまま）
 - **サーバーにも mod の導入が必要**：マルチプレイではサーバー側機能（`give` / `permission` / `share`）がサーバー導入に依存し、未導入だとリクエストが黙って破棄されます
 - 角丸・影のわずかなジャギーは JPEG の仕様です。透明ピクセルを含むウィンドウは PNG に自動切替されアルファを保持します
 - デスクトップキャプチャ（`/wl capture`）は XDG Desktop Portal と Wayland セッションが必要です
@@ -189,7 +197,7 @@
 
 現行バージョンには以下の未整備な点があり、今後のリリースで改善予定です。
 
-1. **ウィンドウ移動が不便** — ワールド内でのウィンドウの移動・操作がまだ十分にスムーズではありません。
+1. **ウィンドウ移動は意図的に制約** — ウィンドウは固定垂直で、ドラッグ中は高さ軸が固定されます（下端は地面より 2 ブロック以上上）。これは意図的な簡素化であり、より自由な配置は今後拡張予定です。
 2. **共有パフォーマンスが比較的低い** — マルチプレイのウィンドウ共有にはまだパフォーマンス改善の余地が大きいです。
 3. **一部のアプリが読み込めない場合があります** — 環境に問題のある一部のアプリは Minecraft 内に読み込めない可能性があります。
 

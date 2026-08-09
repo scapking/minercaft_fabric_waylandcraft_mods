@@ -19,6 +19,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Direction.Axis;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -180,18 +181,38 @@ public class WindowDisplay {
 	}
 	
 	/**
-	 * 绕法线轴旋转窗口（Roll）
+	 * 调整窗口朝向（绕世界 Y 轴旋转，保持竖直）
+	 * 窗口始终垂直放置：法线在水平面内，down 恒为 (0,-1,0)。
 	 * @param angleDelta 弧度增量
 	 */
 	public void rotateBy(double angleDelta) {
-		// 绕normal轴旋转down向量
 		double cos = Math.cos(angleDelta);
 		double sin = Math.sin(angleDelta);
-		Vec3 right = right();
-		
-		// Rodrigues旋转：down绕normal旋转
-		Vec3 newDown = down.scale(cos).add(right.scale(sin)).normalize();
-		this.down = newDown;
+		double nx = normal.x * cos + normal.z * sin;
+		double nz = -normal.x * sin + normal.z * cos;
+		this.normal = new Vec3(nx, 0, nz).normalize();
+		this.down = new Vec3(0, -1, 0);
+	}
+	
+	/**
+	 * 垂直约束：窗口始终竖直放置（法线水平、down=(0,-1,0)），
+	 * 且窗口底部不低于该位置地面之上 2 格。
+	 */
+	public void clampVertical() {
+		// 1. 法线水平化（竖直轴固定）
+		Vec3 horiz = new Vec3(normal.x, 0, normal.z);
+		if(horiz.lengthSqr() < 1e-6) horiz = new Vec3(0, 0, 1);
+		this.normal = horiz.normalize();
+		this.down = new Vec3(0, -1, 0);
+
+		// 2. 高度约束：窗口底部 >= 地面 + 2
+		Minecraft mc = Minecraft.getInstance();
+		if(mc.level != null) {
+			int groundY = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, (int) Math.floor(pivot.x), (int) Math.floor(pivot.z));
+			double halfHeight = (height / 2.0) * pixelScale() * viewScale;
+			double minY = groundY + 2.0 + halfHeight;
+			if(pivot.y < minY) pivot = new Vec3(pivot.x, minY, pivot.z);
+		}
 	}
 	
 	/**
@@ -216,6 +237,7 @@ public class WindowDisplay {
 	
 	public void doGrabMove(Vec3 pos, Vec3 view, Vec3 up, float yRot) {
 		this.anchorToPosView(pos, view, up);
+		this.clampVertical();
 		
 		boolean modDown = InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), GLFW.GLFW_KEY_LEFT_ALT);
 		boolean ctrlDown = InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), GLFW.GLFW_KEY_LEFT_CONTROL);
@@ -225,6 +247,8 @@ public class WindowDisplay {
 		else if(ctrlDown) {
 			this.trySnapToOtherWindows(pos, view);
 		}
+		
+		this.clampVertical();
 	}
 	
 	public void trySnapWorld(Vec3 pos, Vec3 view, float yRot, boolean center) {

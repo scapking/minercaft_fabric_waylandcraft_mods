@@ -92,6 +92,11 @@ public class WaylandCraft implements ClientModInitializer {
 	public XDGDesktopManager xdgManager;
 	public PipeWireCaptureManager captureManager = new PipeWireCaptureManager();
 	
+	// 窗口实例别名（w1, w2, w3 …）
+	public WindowAliasRegistry windowAliases = new WindowAliasRegistry();
+	// 窗口模板（临时 + 永久）
+	public WindowTemplateManager templateManager = new WindowTemplateManager();
+	
 	public KeyMapping keyOpenScreen;
 	public KeyMapping keyCaptureKeyboard;
 	
@@ -150,6 +155,7 @@ public class WaylandCraft implements ClientModInitializer {
 			waylandSocket = bridge.getSocket();
 			xdgManager = new XDGDesktopManager(this);
 			settingsManager = new WaylandCraftSettingsManager(this);
+			templateManager.init(Minecraft.getInstance().gameDirectory);
 			
 			WaylandCraftCommon.LOGGER.info("Server started on " + waylandSocket);
 		}
@@ -195,6 +201,17 @@ public class WaylandCraft implements ClientModInitializer {
 		
 		displays.removeIf((d) -> !d.isValid());
 		displays.forEach((d) -> d.updateGeometry());
+		
+		// 维护窗口实例别名（清理已消失窗口，为新窗口分配 wN）
+		HashSet<Long> aliveHandles = new HashSet<>();
+		for(WLCToplevel t : bridge.getToplevels()) {
+			aliveHandles.add(t.getHandle());
+			windowAliases.getOrCreate(t.getHandle());
+		}
+		windowAliases.cleanup(aliveHandles);
+		
+		// 处理等待窗口出现的永久模板应用
+		templateManager.tick(this);
 		
 		for(WLCPopup popup : bridge.getMappedPopups()) {
 			anchorToParent(popup);

@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.7-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release（v0.2.6）](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release（v0.2.7）](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 > 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 
@@ -89,7 +89,7 @@
 
 ## 命令系统
 
-`<handle>` 支持三种格式：`0x` 短句柄 / 完整句柄 / 窗口别名（如 `firefox_esr`）；多个同名窗口可用 `别名:N` 指定第 N 个（如 `firefox:2`）。
+`<handle>` 支持四种格式：`0x` 短句柄 / 完整句柄 / **实例别名 `wN`（`/wl list windows` 直接获得，会话内唯一）** / 应用别名（如 `firefox_esr`）；多个同名窗口可用 `别名:N` 指定第 N 个（如 `firefox:2`）。
 
 ### 窗口管理
 
@@ -109,6 +109,13 @@
 | `/wl unpin <handle>` | 解除钉住 |
 | `/wl close <handle>` | 终止应用进程（关闭窗口） |
 | `/wl resize <handle> <w> <h>` | 调整窗口分辨率 |
+| `/wl pos <handle>` | 查看窗口位置（x/y/z）、朝向、缩放、分辨率 |
+| `/wl template save <name>` | 保存当前区块内所有窗口布局为临时模板（重启失效） |
+| `/wl template savep <name>` | 保存永久模板（app + 位置 + 分辨率，写入磁盘） |
+| `/wl template apply <name>` | 应用临时模板，恢复窗口位置 |
+| `/wl template applyp <name>` | 应用永久模板：自动启动应用并按记录放置 |
+| `/wl template list` | 列出所有模板 |
+| `/wl template remove <name>` / `removep <name>` | 删除临时 / 永久模板 |
 
 ### 共享管理
 
@@ -178,6 +185,7 @@
 
 ## 使用提示
 
+- **窗口固定垂直**：窗口始终竖直放置（不可倾斜），拖动时垂直轴（y）锁定、只能水平移动，且窗口底部不低于该位置地面之上 2 格；`Ctrl+滚轮` 可旋转朝向（保持竖直）
 - **服务端必须装 mod**：多人模式下 `give` / `permission` / `share` 等服务端功能依赖服务端安装 mod，否则请求会被静默丢弃
 - 窗口圆角/阴影的轻微锯齿是 JPEG 编码的正常现象；含透明像素的窗口会自动改用 PNG 保留 alpha
 - 桌面捕获（`/wl capture`）依赖系统 XDG Desktop Portal，需要 Wayland 会话
@@ -189,7 +197,7 @@
 
 当前版本仍有以下不完善之处，将在后续版本中持续改进：
 
-1. **窗口移动不方便** — 世界中窗口的移动与操作还不够顺滑、方便。
+1. **窗口移动为受控模式** — 窗口固定垂直放置、拖动时锁定高度轴（保证底部高于地面 2 格），这是有意的简化设计；如需更自由的摆放方式可后续扩展。
 2. **共享性能相对差** — 多人窗口共享的性能仍有较大提升空间。
 3. **部分应用可能无法加载** — 某些存在环境问题的应用可能没办法加载到 Minecraft 中。
 

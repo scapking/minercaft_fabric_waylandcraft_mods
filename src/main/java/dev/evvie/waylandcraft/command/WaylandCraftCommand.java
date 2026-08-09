@@ -11,6 +11,7 @@ import com.mojang.brigadier.context.CommandContext;
 
 import dev.evvie.waylandcraft.WaylandCraft;
 import dev.evvie.waylandcraft.WindowDisplay;
+import dev.evvie.waylandcraft.WindowTemplateManager;
 import dev.evvie.waylandcraft.bridge.WLCToplevel;
 import dev.evvie.waylandcraft.capture.PipeWireCaptureManager;
 import dev.evvie.waylandcraft.desktop.DesktopEntry;
@@ -236,6 +237,46 @@ public class WaylandCraftCommand {
 						)
 					)
 				)
+				.then(ClientCommands.literal("pos")
+					.then(ClientCommands.argument("handle", StringArgumentType.word())
+						.executes(WaylandCraftCommand::posWindow)
+					)
+				)
+				.then(ClientCommands.literal("template")
+					.then(ClientCommands.literal("save")
+						.then(ClientCommands.argument("name", StringArgumentType.word())
+							.executes(WaylandCraftCommand::templateSave)
+						)
+					)
+					.then(ClientCommands.literal("savep")
+						.then(ClientCommands.argument("name", StringArgumentType.word())
+							.executes(WaylandCraftCommand::templateSavePermanent)
+						)
+					)
+					.then(ClientCommands.literal("apply")
+						.then(ClientCommands.argument("name", StringArgumentType.word())
+							.executes(WaylandCraftCommand::templateApply)
+						)
+					)
+					.then(ClientCommands.literal("applyp")
+						.then(ClientCommands.argument("name", StringArgumentType.word())
+							.executes(WaylandCraftCommand::templateApplyPermanent)
+						)
+					)
+					.then(ClientCommands.literal("list")
+						.executes(WaylandCraftCommand::templateList)
+					)
+					.then(ClientCommands.literal("remove")
+						.then(ClientCommands.argument("name", StringArgumentType.word())
+							.executes(WaylandCraftCommand::templateRemove)
+						)
+					)
+					.then(ClientCommands.literal("removep")
+						.then(ClientCommands.argument("name", StringArgumentType.word())
+							.executes(WaylandCraftCommand::templateRemovePermanent)
+						)
+					)
+				)
 		);
 	}
 
@@ -267,8 +308,12 @@ public class WaylandCraftCommand {
 		source.sendFeedback(Component.literal(" §e/wl settings list|set <key> <value>§7 — 查看/修改设置§r"));
 		source.sendFeedback(Component.literal(" §e/wl share start|stop|quality|preset|config|reset|info|resolution|stats <handle> [...]§7 — 共享管理§r"));
 		source.sendFeedback(Component.literal(" §e/wl permission list|default|allow|deny|remove§7 — 共享权限管理§r"));
+		source.sendFeedback(Component.literal(" §e/wl pos <handle>§7 — 查看窗口位置/朝向/缩放/分辨率§r"));
+		source.sendFeedback(Component.literal(" §e/wl template save|savep <name>§7 — 保存当前区块窗口布局（临时/永久）§r"));
+		source.sendFeedback(Component.literal(" §e/wl template apply|applyp <name>§7 — 恢复/复现布局§r"));
+		source.sendFeedback(Component.literal(" §e/wl template list|remove|removep§7 — 管理模板§r"));
 		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
-		source.sendFeedback(Component.literal(" §7<handle> 支持 0x短句柄 / 完整句柄 / 窗口别名（如 firefox_esr）§r"));
+		source.sendFeedback(Component.literal(" §7<handle> 支持 0x短句柄 / 完整句柄 / 实例别名 wN（wl list windows 显示）/ 应用别名（如 firefox_esr）§r"));
 		return 1;
 	}
 
@@ -322,6 +367,15 @@ public class WaylandCraftCommand {
 		if(handle >= 0) {
 			WLCToplevel t = wlc.bridge.getToplevel(handle);
 			if(t != null) return t;
+		}
+
+		// 1.2 实例别名（w1, w2, w3 …，由 /wl list windows 获得，会话内唯一）
+		if(handleStr.matches("w\\d+")) {
+			Long h = wlc.windowAliases.resolve(handleStr);
+			if(h != null) {
+				WLCToplevel t = wlc.bridge.getToplevel(h);
+				if(t != null) return t;
+			}
 		}
 
 		// 1.5 别名+序号：alias:N（如 firefox:2）
@@ -425,15 +479,16 @@ public class WaylandCraftCommand {
 
 			for(WLCToplevel toplevel : toplevels) {
 				String hex = shortHex(toplevel.getHandle());
-				String alias = getWindowAlias(toplevel);
+				String instAlias = wlc.windowAliases.getOrCreate(toplevel.getHandle());
+				String appAlias = getWindowAlias(toplevel);
 				String displayName = getWindowDisplayName(toplevel);
 				int w = toplevel.geometry.width();
 				int h = toplevel.geometry.height();
 				boolean shared = isWindowShared(toplevel.getHandle());
 
-				int n = aliasSeen.merge(alias, 1, Integer::sum);
-				String line = " §e" + hex + "§r §a" + alias + "§r";
-				if(aliasCounts.getOrDefault(alias, 0) > 1) {
+				int n = aliasSeen.merge(appAlias, 1, Integer::sum);
+				String line = " §e" + hex + "§r §b" + instAlias + "§r §a[" + appAlias + "]§r";
+				if(aliasCounts.getOrDefault(appAlias, 0) > 1) {
 					line += " §7#" + n + "§r";
 				}
 				line += " §f" + displayName + "§r §7" + w + "x" + h + "§r";
@@ -622,6 +677,7 @@ public class WaylandCraftCommand {
 			Minecraft mc = Minecraft.getInstance();
 			Camera camera = mc.gameRenderer.getMainCamera();
 			display.anchorToCamera(camera);
+			display.clampVertical();
 		}
 
 		source.sendFeedback(Component.literal("§a✔ Shown in world: §f" + getWindowDisplayName(toplevel) + "§r"));
@@ -954,6 +1010,230 @@ public class WaylandCraftCommand {
 		String alias = getWindowAlias(toplevel);
 		source.sendFeedback(Component.literal("§a✔ Resized §f" + alias + "§r → §e" + width + "x" + height + "§r"));
 		return 1;
+	}
+
+	// ===== 位置 & 模板 =====
+
+	/**
+	 * 查看窗口的世界坐标/朝向/缩放/分辨率
+	 * /wl pos <handle>
+	 */
+	private static int posWindow(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		String instAlias = wlc.windowAliases.getOrCreate(toplevel.getHandle());
+		WindowDisplay display = wlc.getDisplay(toplevel);
+
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+		source.sendFeedback(Component.literal(" §b" + instAlias + "§r §f" + getWindowDisplayName(toplevel) + "§r §7(" + shortHex(toplevel.getHandle()) + ")§r"));
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+
+		if(display == null) {
+			source.sendFeedback(Component.literal(" §7尚未在世界中显示（/wl show " + instAlias + " 或 /wl grab " + instAlias + "）§r"));
+			return 1;
+		}
+
+		net.minecraft.world.phys.Vec3 pivot = display.pivot;
+		net.minecraft.world.phys.Vec3 normal = display.normal();
+		source.sendFeedback(Component.literal(" §ex  §7" + fmt(pivot.x) + "   §ey  §7" + fmt(pivot.y) + "   §ez  §7" + fmt(pivot.z) + "§r"));
+		source.sendFeedback(Component.literal(" §e朝向 §7(" + fmt(normal.x) + ", " + fmt(normal.y) + ", " + fmt(normal.z) + ")§r"));
+		source.sendFeedback(Component.literal(" §e分辨率 §7" + toplevel.geometry.width() + "x" + toplevel.geometry.height() + "§r  §e缩放 §7" + fmt(display.viewScale) + "§r"));
+		return 1;
+	}
+
+	private static String fmt(double v) {
+		return String.format(java.util.Locale.ROOT, "%.2f", v);
+	}
+
+	/**
+	 * 保存临时模板：记录玩家所在区块（16x16）内所有已显示窗口的位置
+	 * /wl template save <name>   （内存，重启失效）
+	 */
+	private static int templateSave(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String name = StringArgumentType.getString(context, "name");
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+		if(Minecraft.getInstance().player == null) {
+			source.sendError(Component.literal("§c✘ 需要进入世界§r"));
+			return 0;
+		}
+
+		WindowTemplateManager.WindowTemplate tpl = wlc.templateManager.saveTemporary(name, wlc);
+		if(tpl == null) return 0;
+		source.sendFeedback(Component.literal("§a✔ 临时模板已保存: §b" + name + "§r §7(" + tpl.entries.size() + " 个窗口)§r"));
+		source.sendFeedback(Component.literal(" §7使用 §e/wl template apply " + name + "§7 恢复位置（重启后失效）§r"));
+		return 1;
+	}
+
+	/**
+	 * 保存永久模板：记录 appId + 位置 + 分辨率，写入磁盘
+	 * /wl template savep <name>
+	 */
+	private static int templateSavePermanent(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String name = StringArgumentType.getString(context, "name");
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+		if(Minecraft.getInstance().player == null) {
+			source.sendError(Component.literal("§c✘ 需要进入世界§r"));
+			return 0;
+		}
+
+		WindowTemplateManager.WindowTemplate tpl = wlc.templateManager.savePermanent(name, wlc);
+		if(tpl == null) return 0;
+		source.sendFeedback(Component.literal("§a✔ 永久模板已保存: §b" + name + "§r §7(" + tpl.entries.size() + " 个窗口)§r"));
+		source.sendFeedback(Component.literal(" §7使用 §e/wl template applyp " + name + "§7 启动应用并复现布局（重启后仍可用）§r"));
+		return 1;
+	}
+
+	/**
+	 * 应用临时模板
+	 * /wl template apply <name>
+	 */
+	private static int templateApply(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String name = StringArgumentType.getString(context, "name");
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		if(wlc.templateManager.applyTemporary(name, wlc)) {
+			source.sendFeedback(Component.literal("§a✔ 临时模板已应用: §b" + name + "§r"));
+			return 1;
+		}
+		source.sendError(Component.literal("§c✘ 临时模板不存在或窗口已失效: " + name + "§r"));
+		return 0;
+	}
+
+	/**
+	 * 应用永久模板：窗口已开直接放置，未开则启动应用并等待出现
+	 * /wl template applyp <name>
+	 */
+	private static int templateApplyPermanent(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String name = StringArgumentType.getString(context, "name");
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		if(wlc.templateManager.applyPermanent(name, wlc)) {
+			source.sendFeedback(Component.literal("§a✔ 永久模板已应用: §b" + name + "§r"));
+			if(wlc.templateManager.hasPending()) {
+				source.sendFeedback(Component.literal(" §7正在启动应用，窗口出现后将自动放置…§r"));
+			}
+			return 1;
+		}
+		source.sendError(Component.literal("§c✘ 永久模板不存在: " + name + "§r"));
+		return 0;
+	}
+
+	/**
+	 * 列出所有模板
+	 * /wl template list
+	 */
+	private static int templateList(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+		source.sendFeedback(Component.literal("§6 §lWaylandCraft §r§7 Templates§r"));
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+
+		List<WindowTemplateManager.WindowTemplate> temps = wlc.templateManager.listTemporary();
+		if(temps.isEmpty()) {
+			source.sendFeedback(Component.literal(" §7临时模板: 无§r"));
+		} else {
+			source.sendFeedback(Component.literal(" §7临时模板（重启失效）:§r"));
+			for(WindowTemplateManager.WindowTemplate t : temps) {
+				source.sendFeedback(Component.literal("  §b" + t.name + "§r §7(" + t.entries.size() + " 窗口, 可用 §eapply " + t.name + "§7)§r"));
+			}
+		}
+
+		List<WindowTemplateManager.WindowTemplate> perms = wlc.templateManager.listPermanent();
+		if(perms.isEmpty()) {
+			source.sendFeedback(Component.literal(" §7永久模板: 无§r"));
+		} else {
+			source.sendFeedback(Component.literal(" §7永久模板（重启可用）:§r"));
+			for(WindowTemplateManager.WindowTemplate t : perms) {
+				source.sendFeedback(Component.literal("  §b" + t.name + "§r §7(" + t.entries.size() + " 窗口, 可用 §eapplyp " + t.name + "§7)§r"));
+			}
+		}
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+		return temps.size() + perms.size();
+	}
+
+	/**
+	 * 删除临时模板
+	 * /wl template remove <name>
+	 */
+	private static int templateRemove(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String name = StringArgumentType.getString(context, "name");
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		if(wlc.templateManager.removeTemporary(name)) {
+			source.sendFeedback(Component.literal("§a✔ 临时模板已删除: §b" + name + "§r"));
+			return 1;
+		}
+		source.sendError(Component.literal("§c✘ 临时模板不存在: " + name + "§r"));
+		return 0;
+	}
+
+	/**
+	 * 删除永久模板
+	 * /wl template removep <name>
+	 */
+	private static int templateRemovePermanent(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String name = StringArgumentType.getString(context, "name");
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		if(wlc.templateManager.removePermanent(name)) {
+			source.sendFeedback(Component.literal("§a✔ 永久模板已删除: §b" + name + "§r"));
+			return 1;
+		}
+		source.sendError(Component.literal("§c✘ 永久模板不存在: " + name + "§r"));
+		return 0;
 	}
 
 	private static int shareWindow(CommandContext<FabricClientCommandSource> context) {

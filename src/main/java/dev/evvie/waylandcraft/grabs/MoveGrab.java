@@ -24,10 +24,15 @@ public class MoveGrab extends PointerGrab {
 	
 	@Override
 	public void init() throws GrabDroppedException {
+		if(!window.isValid()) this.drop();
+		// 抓取时先把窗口转正（竖直放置、高度合规）
+		window.clampVertical();
 	}
 	
 	@Override
 	public void release(boolean force) throws GrabDroppedException {
+		if(!window.isValid()) this.drop();
+		window.clampVertical();
 	}
 	
 	@Override
@@ -39,8 +44,10 @@ public class MoveGrab extends PointerGrab {
 		DisplayHitResult hitResult = window.intersect(pos, view);
 		if(hitResult == null) return;
 		
+		// 垂直轴固定：只允许水平方向（localX）拖动，y 保持不变
 		Vec3 diff = hitResult.surfaceLocalOrigin.subtract(initialSurfaceLocal);
-		window.pivot = window.pivot.add(window.localX().scale(diff.x).add(window.localY().scale(diff.y)));
+		window.pivot = window.pivot.add(window.localX().scale(diff.x));
+		window.clampVertical();
 	}
 	
 	@Override
@@ -57,8 +64,9 @@ public class MoveGrab extends PointerGrab {
 			// Alt+滚轮 = 调整缩放
 			window.adjustScale(scrollY);
 		} else {
-			// 普通滚轮 = 沿法线方向前后移动
+			// 普通滚轮 = 沿法线方向前后移动（保持垂直）
 			window.pivot = window.pivot.add(window.normal().scale(scrollY * 0.1));
+			window.clampVertical();
 		}
 	}
 	

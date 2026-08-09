@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.7-brightgreen" />
 </p>
 
 ---
 
 ## Download
 
-👉 **[Latest Release (v0.2.6)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+👉 **[Latest Release (v0.2.7)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
 > The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 
@@ -89,7 +89,7 @@
 
 ## Commands
 
-`<handle>` accepts three formats: `0x` short handle / full handle / window alias (e.g. `firefox_esr`). For duplicate windows use `alias:N` (e.g. `firefox:2`).
+`<handle>` accepts four formats: `0x` short handle / full handle / **instance alias `wN` (shown by `/wl list windows`, unique per session)** / app alias (e.g. `firefox_esr`). For duplicate windows use `alias:N` (e.g. `firefox:2`).
 
 ### Window Management
 
@@ -109,6 +109,13 @@
 | `/wl unpin <handle>` | Unpin the window |
 | `/wl close <handle>` | Terminate the app (close the window) |
 | `/wl resize <handle> <w> <h>` | Resize the window |
+| `/wl pos <handle>` | Show window position (x/y/z), facing, scale, resolution |
+| `/wl template save <name>` | Save layout of all windows in current chunk as a temporary template (lost on restart) |
+| `/wl template savep <name>` | Save a permanent template (app + position + resolution, written to disk) |
+| `/wl template apply <name>` | Apply a temporary template, restoring window positions |
+| `/wl template applyp <name>` | Apply a permanent template: auto-launch the app and place it per record |
+| `/wl template list` | List all templates |
+| `/wl template remove <name>` / `removep <name>` | Remove a temporary / permanent template |
 
 ### Share Management
 
@@ -178,6 +185,7 @@
 
 ## Notes
 
+- **Windows are always vertical**: windows are placed upright (cannot be tilted), the vertical axis (y) is locked while dragging (horizontal movement only), and the window bottom stays at least 2 blocks above the ground at that spot; `Ctrl+Scroll` rotates the facing (staying vertical)
 - **The server must have the mod installed**: in multiplayer, server-side features (`give` / `permission` / `share`) depend on it, otherwise requests are silently dropped
 - Slight aliasing at rounded corners/shadows is normal for JPEG; windows with transparency automatically switch to PNG to preserve alpha
 - Desktop capture (`/wl capture`) requires the system XDG Desktop Portal and a Wayland session
@@ -189,7 +197,7 @@
 
 The current version still has a few rough edges that will be improved in future releases:
 
-1. **Window movement is inconvenient** — moving/resizing windows in the world is not yet smooth or ergonomic enough.
+1. **Window movement is deliberately constrained** — windows are fixed vertical with the height axis locked while dragging (bottom stays ≥ 2 blocks above ground); this is an intentional simplification, and freer placement may be added later.
 2. **Sharing performance is relatively poor** — multi-player window sharing still has significant room for performance improvement.
 3. **Some apps may fail to load** — certain applications with environment issues may not be loadable into Minecraft.
 
