@@ -25,9 +25,7 @@ import dev.evvie.waylandcraft.grabs.MoveGrab;
 import dev.evvie.waylandcraft.grabs.PointerGrabMap;
 import dev.evvie.waylandcraft.grabs.PointerGrabMap.ImplicitGrab;
 import dev.evvie.waylandcraft.grabs.ResizeGrab;
-import dev.evvie.waylandcraft.gui.AppLauncherScreen;
 import dev.evvie.waylandcraft.gui.WaylandHudRenderer;
-import dev.evvie.waylandcraft.gui.SharedWindowManagerScreen;
 import dev.evvie.waylandcraft.gui.WindowManagerScreen;
 import dev.evvie.waylandcraft.item.WindowItem;
 import dev.evvie.waylandcraft.item.WindowItemManager;
@@ -95,9 +93,7 @@ public class WaylandCraft implements ClientModInitializer {
 	public PipeWireCaptureManager captureManager = new PipeWireCaptureManager();
 	
 	public KeyMapping keyOpenScreen;
-	public KeyMapping keyOpenAppLauncher;
 	public KeyMapping keyCaptureKeyboard;
-	public KeyMapping keyOpenSharedWindows;
 	
 	public WindowInHandRenderer windowInHandRenderer = new WindowInHandRenderer();
 	public WindowInItemFrameRenderer windowInItemFrameRenderer = new WindowInItemFrameRenderer();
@@ -125,9 +121,7 @@ public class WaylandCraft implements ClientModInitializer {
 		instance = this;
 		
 		keyOpenScreen = KeyMappingHelper.registerKeyMapping(new KeyMapping("waylandcraft.key.windowManager", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, KEYBIND_CATEGORY));
-		keyOpenAppLauncher = KeyMappingHelper.registerKeyMapping(new KeyMapping("waylandcraft.key.appLauncher", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, KEYBIND_CATEGORY));
 		keyCaptureKeyboard = KeyMappingHelper.registerKeyMapping(new KeyMapping("waylandcraft.key.captureKeyboard", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, KEYBIND_CATEGORY));
-		keyOpenSharedWindows = KeyMappingHelper.registerKeyMapping(new KeyMapping("waylandcraft.key.sharedWindows", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_N, KEYBIND_CATEGORY));
 		
 		LevelRenderEvents.COLLECT_SUBMITS.register(this::renderWorld);
 		LevelRenderEvents.END_EXTRACTION.register(this::updateWorld);
@@ -164,6 +158,11 @@ public class WaylandCraft implements ClientModInitializer {
 		// 更新窗口共享（捕获+发送图像）
 		if(windowShareManager != null) {
 			windowShareManager.update();
+		}
+		
+		// 更新 Portal 桌面捕获帧
+		if(captureManager != null) {
+			captureManager.tick();
 		}
 	}
 	
@@ -273,18 +272,8 @@ public class WaylandCraft implements ClientModInitializer {
 			return;
 		}
 		
-		if(keyOpenAppLauncher.consumeClick()) {
-			minecraft.setScreen(new AppLauncherScreen(WaylandCraft.instance));
-			return;
-		}
-		
 		if(keyCaptureKeyboard.consumeClick()) {
 			enableKeyboardCapture(false);
-			return;
-		}
-		
-		if(keyOpenSharedWindows.consumeClick()) {
-			minecraft.setScreen(new SharedWindowManagerScreen(WaylandCraft.instance));
 			return;
 		}
 	}
@@ -318,7 +307,8 @@ public class WaylandCraft implements ClientModInitializer {
 	
 	private void updateDisplayRequests() {
 		// Hide all windows that were minimized and unset minimize requested state
-		displays.removeIf((w) -> w.window instanceof WLCToplevel && ((WLCToplevel) w.window).requests.minimize);
+		// 钉住的窗口（pinnedToplevel）不受 minimize 影响，保持在世界中显示
+		displays.removeIf((w) -> w.window instanceof WLCToplevel && ((WLCToplevel) w.window) != pinnedToplevel && ((WLCToplevel) w.window).requests.minimize);
 		Stream.of(bridge.getToplevels()).forEach((t) -> t.requests.minimize = false);
 		
 		// Handle any maximize or unmaximize requests

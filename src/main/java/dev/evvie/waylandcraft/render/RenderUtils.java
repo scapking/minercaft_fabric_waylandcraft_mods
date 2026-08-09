@@ -130,25 +130,6 @@ public class RenderUtils {
 		}
 	);
 	
-	// 远程纹理渲染管线
-	private static final RenderPipeline REMOTE_TEXTURE_PIPELINE = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET)
-		.withLocation(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "pipeline/remote_texture"))
-		.withVertexShader(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "core/rendertype_window"))
-		.withFragmentShader(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "core/rendertype_window"))
-		.withSampler("Sampler0")
-		.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-		.withVertexFormat(DefaultVertexFormat.POSITION_TEX, VertexFormat.Mode.QUADS)
-		.build();
-	
-	public static final Function<Identifier, RenderType> REMOTE_TEXTURE = Util.memoize(
-		(identifier) -> {
-			RenderSetup setup = RenderSetup.builder(REMOTE_TEXTURE_PIPELINE)
-				.withTexture("Sampler0", identifier, WINDOW_SAMPLER)
-				.createRenderSetup();
-			return RenderType.create("remote_texture", setup);
-		}
-	);
-	
 	public static final RenderPipeline WINDOW_BLIT = RenderPipeline.builder(RenderPipelines.MATRICES_PROJECTION_SNIPPET)
 		.withLocation(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "pipeline/window_blit"))
 		.withVertexShader(Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "core/window_blit"))
@@ -160,15 +141,21 @@ public class RenderUtils {
 	
 	public static void renderFramebuffer(WindowFramebuffer framebuffer, PoseStack poseStack, SubmitNodeCollector collector, boolean cutout, Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
 		if(!framebuffer.isValid()) return;
-		renderFramebufferTexture(framebuffer.getTextureLocation(), poseStack, collector, cutout, tl, bl, br, tr);
+		renderWindowTexture(framebuffer.getTextureLocation(), poseStack, collector, cutout, false, tl, bl, br, tr);
 	}
 	
 	/**
-	 * 渲染远程纹理 — 使用与WindowFramebuffer完全相同的渲染管线
+	 * 统一窗口纹理渲染入口 — 本地帧缓冲与远程共享纹理共用同一套渲染逻辑
+	 * 
+	 * 同一管线（WINDOW_CUTOUT/WINDOW_TRANSLUCENT + BACKGROUND），同一几何实例
+	 * （WindowRenderInstance），仅通过 flipV 区分纹理来源：
+	 * - flipV=false: 本地 Wayland framebuffer（bottom-up）
+	 * - flipV=true:  远程共享纹理（glReadPixels 捕获为 top-down，需翻转 V）
+	 * 
 	 * cutout=true: WINDOW_CUTOUT管线（不透明内容）
 	 * cutout=false: WINDOW_TRANSLUCENT管线（半透明内容）
 	 */
-	public static void renderFramebufferTexture(Identifier textureLocation, PoseStack poseStack, SubmitNodeCollector collector, boolean cutout, Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
+	public static void renderWindowTexture(Identifier textureLocation, PoseStack poseStack, SubmitNodeCollector collector, boolean cutout, boolean flipV, Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
 		if(textureLocation == null) return;
 		
 		Function<Identifier, RenderType> renderType;
@@ -176,121 +163,81 @@ public class RenderUtils {
 		// Front quad
 		if(WaylandCraft.instance.settings.getAntialiasing()) renderType = cutout ? WINDOW_CUTOUT_ANTIALIAS : WINDOW_TRANSLUCENT_ANTIALIAS;
 		else renderType = cutout ? WINDOW_CUTOUT : WINDOW_TRANSLUCENT;
-		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new FramebufferRenderInstance(tl, bl, br, tr, false));
+		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new WindowRenderInstance(tl, bl, br, tr, false, flipV));
 		
 		// Back quad
 		renderType = cutout ? WINDOW_BACKGROUND_CUTOUT : WINDOW_BACKGROUND_TRANSLUCENT;
-		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new FramebufferRenderInstance(tl, bl, br, tr, true));
+		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new WindowRenderInstance(tl, bl, br, tr, true, flipV));
 	}
 	
 	/**
-	 * 渲染远程帧缓冲纹理 — V坐标翻转版本
+	 * 渲染远程共享纹理（薄封装）— V坐标翻转版本
 	 * 远程纹理通过glReadPixels捕获是top-down的，但shader UV假设bottom-up
 	 * 需要翻转V坐标(0↔1)来纠正上下方向
 	 */
 	public static void renderRemoteFramebufferTexture(Identifier textureLocation, PoseStack poseStack, SubmitNodeCollector collector, boolean cutout, Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
-		if(textureLocation == null) return;
-		
-		Function<Identifier, RenderType> renderType;
-		
-		// Front quad — V flipped
-		if(WaylandCraft.instance.settings.getAntialiasing()) renderType = cutout ? WINDOW_CUTOUT_ANTIALIAS : WINDOW_TRANSLUCENT_ANTIALIAS;
-		else renderType = cutout ? WINDOW_CUTOUT : WINDOW_TRANSLUCENT;
-		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new FlippedVFramebufferRenderInstance(tl, bl, br, tr, false));
-		
-		// Back quad — V flipped
-		renderType = cutout ? WINDOW_BACKGROUND_CUTOUT : WINDOW_BACKGROUND_TRANSLUCENT;
-		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new FlippedVFramebufferRenderInstance(tl, bl, br, tr, true));
+		renderWindowTexture(textureLocation, poseStack, collector, cutout, true, tl, bl, br, tr);
 	}
 	
-	public static final record FramebufferRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr, boolean reverse) implements CustomGeometryRenderer {
+	/**
+	 * 统一窗口几何实例 — 本地（flipV=false）与远程（flipV=true）共用
+	 * reverse=true 渲染背面（内容翻转），flipV=true 时 UV 的 V 坐标 0↔1 翻转
+	 */
+	public static final record WindowRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr, boolean reverse, boolean flipV) implements CustomGeometryRenderer {
 		
 		@Override
 		public void render(Pose pose, VertexConsumer buffer) {
 			if(!reverse) {
-				buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 0.0f);
-				buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 1.0f);
-				buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 1.0f);
-				buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 0.0f);
+				if(!flipV) {
+					buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 0.0f);
+					buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 1.0f);
+					buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 1.0f);
+					buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 0.0f);
+				}
+				else {
+					buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 1.0f);
+					buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 0.0f);
+					buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 0.0f);
+					buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 1.0f);
+				}
 			}
 			else {
-				buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 0.0f);
-				buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 1.0f);
-				buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 1.0f);
-				buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 0.0f);
+				if(!flipV) {
+					buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 0.0f);
+					buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 1.0f);
+					buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 1.0f);
+					buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 0.0f);
+				}
+				else {
+					buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 1.0f);
+					buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 0.0f);
+					buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 0.0f);
+					buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 1.0f);
+				}
 			}
 		}
 		
 	}
 	
 	/**
-	 * V坐标翻转的渲染实例 — 用于远程纹理（glReadPixels是top-down的）
-	 * UV的V坐标翻转：0→1, 1→0
+	 * 统一 2D 纹理渲染入口 — 本地帧缓冲与远程共享纹理共用 WINDOW_BLIT 管线
+	 * 
+	 * flipV=false: 本地 framebuffer（bottom-up）
+	 * flipV=true:  远程共享纹理（top-down，需翻转 V）
 	 */
-	public static final record FlippedVFramebufferRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr, boolean reverse) implements CustomGeometryRenderer {
-		
-		@Override
-		public void render(Pose pose, VertexConsumer buffer) {
-			if(!reverse) {
-				// 正面：V翻转（0→1, 1→0）
-				buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 1.0f);
-				buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 0.0f);
-				buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 0.0f);
-				buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 1.0f);
-			}
-			else {
-				// 背面：V翻转 + 顺序反转
-				buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 1.0f);
-				buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 0.0f);
-				buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 0.0f);
-				buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 1.0f);
-			}
-		}
-		
-	}
-	
-	/**
-	 * 渲染远程纹理（通过Identifier）
-	 */
-	public static void renderRemoteTexture(Identifier textureLocation, PoseStack poseStack, SubmitNodeCollector collector,
-			Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
+	public static void renderTexture2D(GuiGraphicsExtractor context, Identifier textureLocation, int x, int y, int w, int h, boolean flipV) {
 		if(textureLocation == null) return;
-		collector.submitCustomGeometry(poseStack, REMOTE_TEXTURE.apply(textureLocation),
-			new RemoteTextureRenderInstance(tl, bl, br, tr));
-	}
-
-	/**
-	 * 渲染远程纹理（通过textureId，兼容旧接口）
-	 */
-	public static void renderRemoteTexture(int textureId, PoseStack poseStack, SubmitNodeCollector collector, 
-			Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
-		if(textureId < 0) return;
-		
-		// 创建临时纹理标识符
-		Identifier textureLocation = Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "remote_" + textureId);
-		
-		// 渲染远程纹理
-		collector.submitCustomGeometry(poseStack, REMOTE_TEXTURE.apply(textureLocation), 
-			new RemoteTextureRenderInstance(tl, bl, br, tr));
-	}
-	
-	/**
-	 * 远程纹理渲染实例
-	 */
-	public static final record RemoteTextureRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) implements CustomGeometryRenderer {
-		
-		@Override
-		public void render(Pose pose, VertexConsumer buffer) {
-			buffer.addVertex(pose, tl.toVector3f()).setUv(0.0f, 0.0f);
-			buffer.addVertex(pose, bl.toVector3f()).setUv(0.0f, 1.0f);
-			buffer.addVertex(pose, br.toVector3f()).setUv(1.0f, 1.0f);
-			buffer.addVertex(pose, tr.toVector3f()).setUv(1.0f, 0.0f);
+		if(!flipV) {
+			((IGuiGraphicsExtractor) context).invokeInnerBlit(WINDOW_BLIT, textureLocation, x, x + w, y, y + h, 0.0f, 1.0f, 0.0f, 1.0f, -1);
+		}
+		else {
+			((IGuiGraphicsExtractor) context).invokeInnerBlit(WINDOW_BLIT, textureLocation, x, x + w, y, y + h, 0.0f, 1.0f, 1.0f, 0.0f, -1);
 		}
 	}
 	
 	public static void renderFramebuffer2D(GuiGraphicsExtractor context, WindowFramebuffer framebuffer, int x, int y, int w, int h) {
 		if(!framebuffer.isValid()) return;
-		((IGuiGraphicsExtractor) context).invokeInnerBlit(WINDOW_BLIT, framebuffer.getTextureLocation(), x, x + w, y, y + h, 0.0f, 1.0f, 0.0f, 1.0f, -1);
+		renderTexture2D(context, framebuffer.getTextureLocation(), x, y, w, h, false);
 	}
 	
 }
