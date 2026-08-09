@@ -150,6 +150,10 @@ public class SharedWindowClientHandler {
 			payload.downX(), payload.downY(), payload.downZ()
 		);
 		
+		// 同步视觉缩放与 geometry 尺寸（与本地 WindowDisplay 渲染一致）
+		info.updateViewScale(payload.viewScale());
+		info.updateGeometrySize(payload.geometryWidth(), payload.geometryHeight());
+		
 		// 更新RemoteWindowRenderer
 		WaylandCraft instance = WaylandCraft.instance;
 		if(instance != null && instance.remoteWindowRenderer != null) {
@@ -224,6 +228,9 @@ public class SharedWindowClientHandler {
 				display.setVisible(info.visible());
 				// 传递窗口变换
 				display.setTransform(info.pivot(), info.normal(), info.down());
+				// 传递视觉缩放与 geometry 尺寸（与本地 WindowDisplay 一致）
+				display.setViewScale(info.viewScale());
+				display.setGeometrySize(info.geometryWidth(), info.geometryHeight());
 				break;
 			}
 		}
@@ -292,6 +299,11 @@ public class SharedWindowClientHandler {
 		private int bufferXOff;
 		private int bufferYOff;
 		
+		// 发送端 WindowDisplay 的视觉缩放倍数与 geometry 尺寸（本地渲染一致）
+		private double viewScale = 1.0;
+		private int geometryWidth;
+		private int geometryHeight;
+		
 		private byte[] imageData;
 		private int imageWidth, imageHeight;
 		
@@ -334,6 +346,9 @@ public class SharedWindowClientHandler {
 		public Vec3 down() { return down; }
 		public int bufferXOff() { return bufferXOff; }
 		public int bufferYOff() { return bufferYOff; }
+		public double viewScale() { return viewScale; }
+		public int geometryWidth() { return geometryWidth; }
+		public int geometryHeight() { return geometryHeight; }
 		
 		public void setPermission(WindowPermission permission) {
 			this.permission = permission;
@@ -342,6 +357,15 @@ public class SharedWindowClientHandler {
 		public void setBufferOffset(int xoff, int yoff) {
 			this.bufferXOff = xoff;
 			this.bufferYOff = yoff;
+		}
+		
+		public void updateViewScale(double viewScale) {
+			this.viewScale = viewScale;
+		}
+		
+		public void updateGeometrySize(int width, int height) {
+			this.geometryWidth = width;
+			this.geometryHeight = height;
 		}
 		
 		public void updateState(int x, int y, int width, int height, boolean visible) {

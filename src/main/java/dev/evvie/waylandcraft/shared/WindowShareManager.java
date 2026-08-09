@@ -236,6 +236,9 @@ public class WindowShareManager {
 		double pivotX = 0, pivotY = 0, pivotZ = 0;
 		double normalX = 0, normalY = 0, normalZ = 1;
 		double downX = 0, downY = -1, downZ = 0;
+		double viewScale = 1.0;
+		int geometryWidth = toplevel.geometry.width();
+		int geometryHeight = toplevel.geometry.height();
 		if(clientMod != null) {
 			for(var display : clientMod.displays) {
 				if(display.window.getHandle() == state.windowHandle) {
@@ -245,6 +248,8 @@ public class WindowShareManager {
 					pivotX = pivot.x; pivotY = pivot.y; pivotZ = pivot.z;
 					normalX = normal.x; normalY = normal.y; normalZ = normal.z;
 					downX = d.x; downY = d.y; downZ = d.z;
+					// 视觉缩放倍数必须同步，否则接收端尺寸与本地不一致
+					viewScale = display.viewScale;
 					break;
 				}
 			}
@@ -256,7 +261,8 @@ public class WindowShareManager {
 			processedData,
 			pivotX, pivotY, pivotZ,
 			normalX, normalY, normalZ,
-			downX, downY, downZ
+			downX, downY, downZ,
+			viewScale, geometryWidth, geometryHeight
 		);
 		ClientPlayNetworking.send(imagePayload);
 		

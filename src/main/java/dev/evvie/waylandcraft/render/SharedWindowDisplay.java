@@ -1,7 +1,5 @@
 package dev.evvie.waylandcraft.render;
 
-import java.util.function.Function;
-
 import org.jetbrains.annotations.Nullable;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -34,9 +32,15 @@ public class SharedWindowDisplay {
 	private Vec3 normal = new Vec3(0, 0, 1);
 	private Vec3 down = new Vec3(0, -1, 0);
 	
-	// 窗口尺寸
+	// 窗口尺寸（framebuffer 尺寸，用于四边形渲染）
 	private int width;
 	private int height;
+	
+	// 视觉缩放倍数（与本地 WindowDisplay.viewScale 一致）
+	private double viewScale = 1.0;
+	// geometry 尺寸（与本地 WindowDisplay.updateGeometry 的 width/height 一致，用于 origin 居中）
+	private int geometryWidth;
+	private int geometryHeight;
 	
 	// framebuffer 内容偏移（与本地 WindowDisplay.render 的 xoff/yoff 语义一致）
 	private int xoff;
@@ -151,6 +155,21 @@ public class SharedWindowDisplay {
 	}
 	
 	/**
+	 * 设置视觉缩放倍数（与本地 WindowDisplay.viewScale 一致）
+	 */
+	public void setViewScale(double viewScale) {
+		this.viewScale = viewScale;
+	}
+	
+	/**
+	 * 设置 geometry 尺寸（与本地 WindowDisplay.updateGeometry 的 width/height 一致）
+	 */
+	public void setGeometrySize(int width, int height) {
+		this.geometryWidth = width;
+		this.geometryHeight = height;
+	}
+	
+	/**
 	 * 获取像素缩放比例 — 与WindowDisplay一致，读取用户设置
 	 */
 	public float pixelScale() {
@@ -158,24 +177,28 @@ public class SharedWindowDisplay {
 	}
 	
 	/**
-	 * 获取局部X轴方向
+	 * 获取局部X轴方向 — 与本地 WindowDisplay.localX() 一致（含 viewScale）
 	 */
 	public Vec3 localX() {
-		return normal.cross(down).scale(pixelScale());
+		return normal.cross(down).scale(pixelScale() * viewScale);
 	}
 	
 	/**
-	 * 获取局部Y轴方向
+	 * 获取局部Y轴方向 — 与本地 WindowDisplay.localY() 一致（含 viewScale）
 	 */
 	public Vec3 localY() {
-		return down.scale(pixelScale());
+		return down.scale(pixelScale() * viewScale);
 	}
 	
 	/**
-	 * 获取原点位置
+	 * 获取原点位置 — 与本地 WindowDisplay.origin() 一致：
+	 * 使用 geometry 尺寸（而非 framebuffer 尺寸）居中，
+	 * 保证与本地窗口在世界上完全对齐。
 	 */
 	public Vec3 origin() {
-		return pivot.add(localX().scale(-width/2)).add(localY().scale(-height/2));
+		int w = geometryWidth > 0 ? geometryWidth : width;
+		int h = geometryHeight > 0 ? geometryHeight : height;
+		return pivot.add(localX().scale(-w/2)).add(localY().scale(-h/2));
 	}
 	
 	/**

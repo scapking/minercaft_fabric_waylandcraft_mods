@@ -305,6 +305,8 @@ public class WaylandCraftCommand {
 
 	/**
 	 * 查找窗口 - 支持 hex handle、别名、后缀匹配
+	 * 别名支持序号：别名:N 表示第 N 个同别名窗口（1 起），
+	 * 解决多个同名窗口（如多个 firefox）只能操作第一个的问题。
 	 */
 	private static WLCToplevel findToplevelByHandle(FabricClientCommandSource source, String handleStr) {
 		WaylandCraft wlc = WaylandCraft.instance;
@@ -320,6 +322,31 @@ public class WaylandCraftCommand {
 		if(handle >= 0) {
 			WLCToplevel t = wlc.bridge.getToplevel(handle);
 			if(t != null) return t;
+		}
+
+		// 1.5 别名+序号：alias:N（如 firefox:2）
+		int colonIdx = handleStr.lastIndexOf(':');
+		if(colonIdx > 0) {
+			String numPart = handleStr.substring(colonIdx + 1);
+			String aliasPart = handleStr.substring(0, colonIdx).toLowerCase().replaceAll("[^a-z0-9_]", "");
+			try {
+				int n = Integer.parseInt(numPart);
+				if(n >= 1) {
+					int count = 0;
+					for(WLCToplevel t : toplevels) {
+						if(getWindowAlias(t).equals(aliasPart)) {
+							count++;
+							if(count == n) return t;
+						}
+					}
+					if(count > 0) {
+						source.sendError(Component.literal("§c✘ Window alias §e" + aliasPart + "§c has only " + count + " match(es), requested #" + n + "§r"));
+						return null;
+					}
+				}
+			} catch(NumberFormatException ignored) {
+				// 不是序号语法，继续走别名匹配
+			}
 		}
 
 		// 2. 后缀匹配（支持短handle如 0xABCD）
@@ -389,6 +416,13 @@ public class WaylandCraftCommand {
 		if(toplevels.length == 0) {
 			source.sendFeedback(Component.literal(" §7No windows detected§r"));
 		} else {
+			// 统计别名出现次数，给同名窗口加序号（firefox:1, firefox:2 …）
+			java.util.Map<String, Integer> aliasCounts = new java.util.HashMap<>();
+			for(WLCToplevel toplevel : toplevels) {
+				aliasCounts.merge(getWindowAlias(toplevel), 1, Integer::sum);
+			}
+			java.util.Map<String, Integer> aliasSeen = new java.util.HashMap<>();
+
 			for(WLCToplevel toplevel : toplevels) {
 				String hex = shortHex(toplevel.getHandle());
 				String alias = getWindowAlias(toplevel);
@@ -397,7 +431,12 @@ public class WaylandCraftCommand {
 				int h = toplevel.geometry.height();
 				boolean shared = isWindowShared(toplevel.getHandle());
 
-				String line = " §e" + hex + "§r §a" + alias + "§r §f" + displayName + "§r §7" + w + "x" + h + "§r";
+				int n = aliasSeen.merge(alias, 1, Integer::sum);
+				String line = " §e" + hex + "§r §a" + alias + "§r";
+				if(aliasCounts.getOrDefault(alias, 0) > 1) {
+					line += " §7#" + n + "§r";
+				}
+				line += " §f" + displayName + "§r §7" + w + "x" + h + "§r";
 				if(shared) line += " §a✔§r";
 
 				source.sendFeedback(Component.literal(line));

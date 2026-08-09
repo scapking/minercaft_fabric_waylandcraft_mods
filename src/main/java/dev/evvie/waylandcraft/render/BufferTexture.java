@@ -209,11 +209,19 @@ public abstract class BufferTexture {
 		public void copyData() {
 			if(eglImageView == null) return;
 			
-			try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Dmabuf blit", target.getColorTextureView(), OptionalInt.of(0x00000000))) {
-				renderPass.setPipeline(DMABUF_BLIT);
-				RenderSystem.bindDefaultUniforms(renderPass);
-				renderPass.bindTexture("InSampler", eglImageView, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
-				renderPass.draw(0, 3);
+			try {
+				try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Dmabuf blit", target.getColorTextureView(), OptionalInt.of(0x00000000))) {
+					renderPass.setPipeline(DMABUF_BLIT);
+					RenderSystem.bindDefaultUniforms(renderPass);
+					renderPass.bindTexture("InSampler", eglImageView, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
+					renderPass.draw(0, 3);
+				}
+			}
+			catch(Throwable t) {
+				// 防御：Iris（光影）拦截自定义管线时降级跳过，避免崩游戏
+				if(WaylandCraftCommon.LOGGER.isWarnEnabled()) {
+					WaylandCraftCommon.LOGGER.warn("DMABUF blit skipped (shader conflict?): {}", t.toString());
+				}
 			}
 		}
 		

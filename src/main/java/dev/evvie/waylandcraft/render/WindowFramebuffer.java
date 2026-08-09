@@ -169,6 +169,13 @@ public class WindowFramebuffer {
 				}
 			}
 		}
+		catch(Throwable t) {
+			// 防御：Iris（光影）若拦截自定义离屏管线，降级跳过本帧合成而不是崩游戏。
+			// 离屏内容缺失时窗口会显示为空面板，但游戏本身不会崩溃。
+			if(WaylandCraftCommon.LOGGER.isWarnEnabled()) {
+				WaylandCraftCommon.LOGGER.warn("Window framebuffer composite skipped (shader conflict?): {}", t.toString());
+			}
+		}
 		finally {
 			for(CompiledBufferDraw element : elements) {
 				element.vertexBuffer.close();
@@ -198,6 +205,12 @@ public class WindowFramebuffer {
 					pass.setIndexBuffer(element.indexBuffer, element.indexType);
 					pass.drawIndexed(0, 0, element.indexCount, 1);
 				}
+			}
+		}
+		catch(Throwable t) {
+			// 防御：Iris 拦截自定义管线时跳过 debug damage 渲染
+			if(WaylandCraftCommon.LOGGER.isWarnEnabled()) {
+				WaylandCraftCommon.LOGGER.warn("Window damage debug skipped (shader conflict?): {}", t.toString());
 			}
 		}
 		finally {

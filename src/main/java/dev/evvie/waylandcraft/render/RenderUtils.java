@@ -26,6 +26,8 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.SubmitNodeCollector.CustomGeometryRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import net.minecraft.world.phys.Vec3;
@@ -139,6 +141,51 @@ public class RenderUtils {
 			.withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
 			.build();
 	
+	// === Iris（光影）兼容回退：使用原版管线替代自定义管线 ===
+	// Iris 拦截所有自定义 RenderPipeline（iris$redirectIrisProgram），自定义 rendertype_window
+	// 不被认识 → 抛异常。原版 entity 管线 Iris 认识，可正常渲染。
+	// 注意：原版 entity shader 会乘 diffuse light + lightmap，这里用全亮 lightmap(0xF000F0)
+	// 保证窗口内容始终满亮度显示（与自定义管线一致）。
+	private static final Function<Identifier, RenderType> VANILLA_ENTITY_CUTOUT = Util.memoize(
+		(Identifier identifier) -> RenderTypes.entityCutout(identifier)
+	);
+	private static final Function<Identifier, RenderType> VANILLA_ENTITY_TRANSLUCENT = Util.memoize(
+		(Identifier identifier) -> RenderTypes.entityTranslucent(identifier)
+	);
+	
+	/** entity 顶点格式的写顶点辅助（Position+Color+UV0+UV1(overlay)+UV2(light)+Normal） */
+	private static void writeVanillaVertex(VertexConsumer buffer, Pose pose, Vec3 p, float u, float v) {
+		buffer.addVertex(pose, p.toVector3f())
+			.setColor(255, 255, 255, 255)
+			.setUv(u, v)
+			.setOverlay(OverlayTexture.NO_OVERLAY)
+			.setLight(0xF000F0) // 全亮 lightmap（block 15 + sky 15）
+			.setNormal(0.0f, 0.0f, 1.0f);
+	}
+	
+	/**
+	 * Iris 兼容模式下的窗口几何实例 — 用原版 entity 管线渲染（单面四边形，无 cull 双面可见）
+	 */
+	public static final record VanillaWindowRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr, boolean flipV) implements CustomGeometryRenderer {
+		
+		@Override
+		public void render(Pose pose, VertexConsumer buffer) {
+			if(!flipV) {
+				writeVanillaVertex(buffer, pose, tl, 0.0f, 0.0f);
+				writeVanillaVertex(buffer, pose, bl, 0.0f, 1.0f);
+				writeVanillaVertex(buffer, pose, br, 1.0f, 1.0f);
+				writeVanillaVertex(buffer, pose, tr, 1.0f, 0.0f);
+			}
+			else {
+				writeVanillaVertex(buffer, pose, tl, 0.0f, 1.0f);
+				writeVanillaVertex(buffer, pose, bl, 0.0f, 0.0f);
+				writeVanillaVertex(buffer, pose, br, 1.0f, 0.0f);
+				writeVanillaVertex(buffer, pose, tr, 1.0f, 1.0f);
+			}
+		}
+		
+	}
+	
 	public static void renderFramebuffer(WindowFramebuffer framebuffer, PoseStack poseStack, SubmitNodeCollector collector, boolean cutout, Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
 		if(!framebuffer.isValid()) return;
 		renderWindowTexture(framebuffer.getTextureLocation(), poseStack, collector, cutout, false, tl, bl, br, tr);
@@ -157,6 +204,14 @@ public class RenderUtils {
 	 */
 	public static void renderWindowTexture(Identifier textureLocation, PoseStack poseStack, SubmitNodeCollector collector, boolean cutout, boolean flipV, Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr) {
 		if(textureLocation == null) return;
+		
+		// Iris 光影兼容：自定义管线会被 Iris 拦截抛异常，改用原版 entity 管线
+		if(IrisCompat.isIrisLoaded()) {
+			Function<Identifier, RenderType> rt = cutout ? VANILLA_ENTITY_CUTOUT : VANILLA_ENTITY_TRANSLUCENT;
+			// 原版 entity 管线（无 cull）单面四边形即可双面可见，避免与背面四边形 z-fighting
+			collector.submitCustomGeometry(poseStack, rt.apply(textureLocation), new VanillaWindowRenderInstance(tl, bl, br, tr, flipV));
+			return;
+		}
 		
 		Function<Identifier, RenderType> renderType;
 		
@@ -227,11 +282,13 @@ public class RenderUtils {
 	 */
 	public static void renderTexture2D(GuiGraphicsExtractor context, Identifier textureLocation, int x, int y, int w, int h, boolean flipV) {
 		if(textureLocation == null) return;
+		// Iris 兼容：2D GUI 渲染改用原版 GUI_TEXTURED 管线（Iris 认识）
+		RenderPipeline pipeline = IrisCompat.isIrisLoaded() ? RenderPipelines.GUI_TEXTURED : WINDOW_BLIT;
 		if(!flipV) {
-			((IGuiGraphicsExtractor) context).invokeInnerBlit(WINDOW_BLIT, textureLocation, x, x + w, y, y + h, 0.0f, 1.0f, 0.0f, 1.0f, -1);
+			((IGuiGraphicsExtractor) context).invokeInnerBlit(pipeline, textureLocation, x, x + w, y, y + h, 0.0f, 1.0f, 0.0f, 1.0f, -1);
 		}
 		else {
-			((IGuiGraphicsExtractor) context).invokeInnerBlit(WINDOW_BLIT, textureLocation, x, x + w, y, y + h, 0.0f, 1.0f, 1.0f, 0.0f, -1);
+			((IGuiGraphicsExtractor) context).invokeInnerBlit(pipeline, textureLocation, x, x + w, y, y + h, 0.0f, 1.0f, 1.0f, 0.0f, -1);
 		}
 	}
 	
