@@ -48,5 +48,17 @@ gui/
 
 ## 验收
 
-- `./gradlew test` 通过（纯逻辑测试：WindowLayout / WcColors / 布局）。
-- `./gradlew build` 产出可用的 mod jar（native .so 已打包）。
+- [x] `./gradlew test` 通过（纯逻辑测试：WindowLayout / WcColors，16 tests）
+- [x] `./gradlew build` 产出可用的 mod jar（native .so 已打包，41MB）
+- [x] 全部 5 个 Screen/HUD 迁移到设计系统，无 java.awt.Color 残留
+- [x] 窗口画面组件化：WindowViewportWidget（本地 framebuffer / 远程纹理双数据源，
+      HUD pinned 已用静态 render() 接入，SharedWindowManagerScreen 已接入远程预览）
+- [x] 9-patch 纹理 + nine_slice mcmeta（panel/field/neon_border/neon_filled/titlebar）
+- [x] 预览图：tools/gen_preview.py → tools/preview/*.png
+
+## 后续（可选）
+
+- WindowManagerScreen 工作区窗口改为组件化卡片视图（当前保留 1:1 工作区语义）
+- NeonEditBox（替换原版 EditBox 样式）
+- 运行时 UI 测试（需要真实 Wayland 环境）
+
