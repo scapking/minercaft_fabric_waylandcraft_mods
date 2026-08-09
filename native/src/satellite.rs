@@ -232,8 +232,19 @@ fn try_invoke_xws(
     let mut command = Command::new(xws_binary());
     command
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // stderr/stdout 不再丢进 null：xwayland-satellite 连接 compositor 失败时
+        // 会打印错误（如 "failed to connect to wayland"），透传到日志方便诊断。
+        .stdout(Stdio::from(std::fs::OpenOptions::new()
+            .create(true).append(true)
+            .open("/tmp/waylandcraft-satellite.log").unwrap_or_else(|_| {
+                // 打开失败时退化成 /dev/null，绝不让 spawn 失败
+                std::fs::File::open("/dev/null").expect("cannot open /dev/null")
+            })))
+        .stderr(Stdio::from(std::fs::OpenOptions::new()
+            .create(true).append(true)
+            .open("/tmp/waylandcraft-satellite.log").unwrap_or_else(|_| {
+                std::fs::File::open("/dev/null").expect("cannot open /dev/null")
+            })))
         .env("WAYLAND_DISPLAY", wayland_display)
         .env_remove("DISPLAY")
         .env_remove("LD_LIBRARY_PATH");
@@ -279,10 +290,37 @@ pub fn start_satellite(
         let (unix_fd_copy, unix_fd_raw) = copy_listenfd(&sockets.unix_fd)?;
         let (abs_fd_copy, abs_fd_raw) = copy_listenfd(&sockets.abstract_fd)?;
 
-        let handle = try_invoke_xws(wayland_display, dpy, &[
+        let mut handle = try_invoke_xws(wayland_display, dpy, &[
             unix_fd_raw,
             abs_fd_raw,
         ])?;
+
+        // 存活检查：xwayland-satellite 要连上 compositor（WAYLAND_DISPLAY=wayland-1）
+        // 才会真正监听 X socket。如果它连不上（socket 不存在 / compositor 没起来），
+        // 会立刻退出——此时 try_invoke_xws 的 spawn 仍然"成功"，导致调用方误以为
+        // 拿到了 DISPLAY=:2，实际 X server 不存在（crashreporter 打不开 :2）。
+        // 这里等一小会儿，确认子进程还活着才返回成功。
+        let mut alive = false;
+        for _ in 0..20 {
+            match handle.try_wait() {
+                Ok(Some(status)) => {
+                    eprintln!("[waylandcraft] xwayland-satellite exited early: {status}");
+                    break;
+                }
+                Ok(None) => {
+                    alive = true;
+                    break;
+                }
+                Err(_) => break,
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        if !alive {
+            // 子进程死了，这个 display 不可用，继续试下一个
+            let _ = handle.kill();
+            let _ = handle.wait();
+            continue;
+        }
 
         // Only drop file descriptor after passing it to xwayland-satellite
         drop(unix_fd_copy);

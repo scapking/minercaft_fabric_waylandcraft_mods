@@ -93,13 +93,17 @@ fn build_env_list(app_type: &str, wayland_display: &str, display: &str) -> Vec<(
 /// 为 flatpak 注入 --env= 和 --filesystem= 参数
 ///
 /// 修复说明：
-/// 1. 之前注入 `--filesystem={runtime_dir}/{wayland_display}`（单个 socket 文件的宿主绝对路径），
-///    但 flatpak 沙箱内有自己的 /run/user/<uid>，宿主 XDG_RUNTIME_DIR 默认不可见，
-///    所以该路径在沙箱内不可达 → 注入无效。正确做法是用 flatpak 的特殊值
-///    `--filesystem=xdg-run` 暴露整个宿主 XDG_RUNTIME_DIR。
-/// 2. 之前找不到 app_id 时 insert_pos 保持 0，会把选项插到最前面（甚至插到 `run` 之前），
+/// 1. 之前注入 `--filesystem=xdg-run`（flatpak 特殊值）期望暴露宿主 XDG_RUNTIME_DIR，
+///    但实测 flatpak 报"未知文件系统位置 xdg-run"——xdg- 特殊值只支持
+///    desktop/documents/download/music/pictures/publicshare/templates/videos/config/cache/data，
+///    **没有 run**。正确做法是注入宿主 runtime 目录下 wayland socket 的**绝对路径**，
+///    让 flatpak 把该文件 bind 进沙箱同名路径（沙箱内 $XDG_RUNTIME_DIR 也是
+///    /run/user/<uid>，WAYLAND_DISPLAY=wayland-1 时应用正好找 /run/user/<uid>/wayland-1）。
+/// 2. X11 应用还需要能看到 xwayland-satellite 的 X socket（/tmp/.X11-unix/X<dpy>），
+///    所以额外暴露 /tmp/.X11-unix 目录。
+/// 3. 找不到 app_id 时 insert_pos 保持 0，会把选项插到最前面（甚至插到 `run` 之前），
 ///    导致 flatpak 报错。现在找不到就追加到末尾。
-fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &str) {
+fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &str, runtime_dir: &str) {
     // 找到 app_id 的位置（run 之后第一个非选项参数）
     let mut insert_pos = None;
     let mut found_run = false;
@@ -120,15 +124,17 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &s
         // 禁用 manifest 里的 --socket=wayland：否则 flatpak 会把 WAYLAND_DISPLAY
         // 指向宿主桌面（如 GNOME 的 wayland-0），应用窗口出现在真实桌面而不是 Minecraft。
         "--nosocket=wayland".to_string(),
-        // 暴露宿主 XDG_RUNTIME_DIR，让沙箱内能看到 wayland socket
-        "--filesystem=xdg-run".to_string(),
+        // 暴露宿主 wayland socket 的绝对路径（flatpak 无 xdg-run 特殊值，必须用绝对路径）
+        format!("--filesystem={}/{}", runtime_dir.trim_end_matches('/'), wayland_display),
         format!("--env=WAYLAND_DISPLAY={}", wayland_display),
         "--env=GDK_BACKEND=wayland".to_string(),
         "--env=QT_QPA_PLATFORM=wayland".to_string(),
         "--env=ELECTRON_OZONE_PLATFORM_HINT=auto".to_string(),
     ];
-    // X11-only flatpak apps need DISPLAY from xwayland-satellite
+    // X11-only flatpak apps need DISPLAY from xwayland-satellite；
+    // 只有 satellite 确实提供了 DISPLAY（/tmp/.X11-unix 由 satellite 创建）才暴露 X11 socket 目录
     if !display.is_empty() {
+        opts.push("--filesystem=/tmp/.X11-unix".to_string());
         opts.push(format!("--env=DISPLAY={}", display));
     }
 
@@ -203,7 +209,7 @@ pub fn spawn(
     
     let (final_cmd, final_args) = if app_type == "flatpak" {
         let mut flatpak_args = args.clone();
-        inject_flatpak_env(&mut flatpak_args, &wayland_display, &display);
+        inject_flatpak_env(&mut flatpak_args, &wayland_display, &display, &runtime_dir);
         log(&format!("[flatpak] final args={:?}", flatpak_args));
         (cmd.clone(), flatpak_args)
     } else {

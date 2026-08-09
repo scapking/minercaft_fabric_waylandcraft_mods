@@ -924,7 +924,8 @@ public class WaylandCraftCommand {
 				source.sendFeedback(Component.literal(" §7No desktop windows detected§r"));
 			} else {
 			for (X11WindowLister.WindowInfo info : windowInfos) {
-				String desc = !info.appId.isEmpty() && !info.appId.equals(info.title) ? " §7- §8" + info.appId + "§r" : "";
+				// appId 可能为 null（X11 窗口没有 WM_CLASS 时），判空后再比较
+				String desc = info.appId != null && !info.appId.isEmpty() && !info.appId.equals(info.title) ? " §7- §8" + info.appId + "§r" : "";
 				source.sendFeedback(Component.literal(" §a[" + info.hash + "]§r §b" + info.title + "§r" + desc + " §7pid:" + info.pid + "§r"));
 			}
 			}
