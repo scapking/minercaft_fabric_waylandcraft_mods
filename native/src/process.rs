@@ -129,16 +129,23 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &s
         "--socket=wayland".to_string(),
         // 双保险：绝对路径也暴露一次（部分 flatpak 版本 --socket 行为不同；若支持则同名 bind）
         format!("--filesystem={}/{}", runtime_dir.trim_end_matches('/'), wayland_display),
+        // 禁用 manifest 的 --socket=x11：它会把宿主桌面的 X socket（/tmp/.X11-unix/X0/X1 等）
+        // 整个 bind 进沙箱并设 DISPLAY=宿主值，导致 Chrome 等应用窗口出现在宿主桌面而不是 Minecraft。
+        "--nosocket=x11".to_string(),
         format!("--env=WAYLAND_DISPLAY={}", wayland_display),
         "--env=GDK_BACKEND=wayland".to_string(),
         "--env=QT_QPA_PLATFORM=wayland".to_string(),
         "--env=ELECTRON_OZONE_PLATFORM_HINT=auto".to_string(),
     ];
     // X11-only flatpak apps need DISPLAY from xwayland-satellite；
-    // 只有 satellite 确实提供了 DISPLAY（/tmp/.X11-unix 由 satellite 创建）才暴露 X11 socket 目录
+    // 只 bind satellite 的单个 X socket（/tmp/.X11-unix/X<dpy>），不暴露宿主桌面的 X socket，
+    // 这样沙箱内唯一可用的 X server 就是 satellite → 窗口必然回到 Minecraft。
     if !display.is_empty() {
-        opts.push("--filesystem=/tmp/.X11-unix".to_string());
-        opts.push(format!("--env=DISPLAY={}", display));
+        let dpy = display.trim_start_matches(':');
+        if !dpy.is_empty() {
+            opts.push(format!("--filesystem=/tmp/.X11-unix/X{}", dpy));
+            opts.push(format!("--env=DISPLAY={}", display));
+        }
     }
 
     for (offset, opt) in opts.iter().enumerate() {
