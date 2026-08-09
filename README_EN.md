@@ -204,7 +204,6 @@ The current version still has a few rough edges that will be improved in future 
 
 1. **Window movement is deliberately constrained** — windows are fixed vertical with the height axis locked while dragging (bottom stays ≥ 0.4 blocks above ground); this is an intentional simplification, and freer placement may be added later.
 2. **Sharing performance is relatively poor** — multi-player window sharing still has significant room for performance improvement.
-3. **Some apps may still fail to load** — certain applications with environment issues may not be loadable into Minecraft. X11-only apps now get a bundled `xwayland-satellite` for `DISPLAY`, but a system `Xwayland` binary is still required.
 
 ---
 
