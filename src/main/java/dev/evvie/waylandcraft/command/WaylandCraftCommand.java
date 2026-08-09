@@ -1007,6 +1007,13 @@ public class WaylandCraftCommand {
 		}
 
 		wlc.bridge.resizeToplevelInteractive(toplevel, width, height);
+		// 分辨率变化后立即重新执行垂直钳制（底部不低于地面 0.4 格），
+		// 不等下一帧 updateWorld 的 clampIfResized。
+		WindowDisplay display = wlc.getDisplay(toplevel);
+		if(display != null) {
+			display.updateGeometry();
+			display.clampVertical();
+		}
 		String alias = getWindowAlias(toplevel);
 		source.sendFeedback(Component.literal("§a✔ Resized §f" + alias + "§r → §e" + width + "x" + height + "§r"));
 		return 1;

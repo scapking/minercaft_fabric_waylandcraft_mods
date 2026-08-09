@@ -45,6 +45,13 @@ public class WindowDisplay {
 	private int width;
 	private int height;
 	
+	// 上次触发垂直钳制时的窗口尺寸（用于检测 resize 后重新钳制）
+	private int lastClampWidth = -1;
+	private int lastClampHeight = -1;
+	
+	// 窗口底部距地面的最小净空（方块）
+	public static final double GROUND_CLEARANCE = 0.4;
+	
 	public WindowDisplay(WLCAbstractWindow window) {
 		this.window = window;
 		this.updateGeometry();
@@ -196,7 +203,7 @@ public class WindowDisplay {
 	
 	/**
 	 * 垂直约束：窗口始终竖直放置（法线水平、down=(0,-1,0)），
-	 * 且窗口底部不低于该位置地面之上 2 格。
+	 * 且窗口底部不低于该位置地面之上 GROUND_CLEARANCE 格。
 	 */
 	public void clampVertical() {
 		// 1. 法线水平化（竖直轴固定）
@@ -205,13 +212,26 @@ public class WindowDisplay {
 		this.normal = horiz.normalize();
 		this.down = new Vec3(0, -1, 0);
 
-		// 2. 高度约束：窗口底部 >= 地面 + 2
+		// 2. 高度约束：窗口底部 >= 地面 + GROUND_CLEARANCE
 		Minecraft mc = Minecraft.getInstance();
 		if(mc.level != null) {
 			int groundY = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, (int) Math.floor(pivot.x), (int) Math.floor(pivot.z));
 			double halfHeight = (height / 2.0) * pixelScale() * viewScale;
-			double minY = groundY + 2.0 + halfHeight;
+			double minY = groundY + GROUND_CLEARANCE + halfHeight;
 			if(pivot.y < minY) pivot = new Vec3(pivot.x, minY, pivot.z);
+		}
+	}
+	
+	/**
+	 * 窗口分辨率变化后自动重新执行垂直钳制。
+	 * 需要在 updateGeometry() 之后调用；仅当尺寸发生变化时才触发，
+	 * 避免每帧重复钳制、也避免干扰贴天花板等非垂直摆放。
+	 */
+	public void clampIfResized() {
+		if(width != lastClampWidth || height != lastClampHeight) {
+			lastClampWidth = width;
+			lastClampHeight = height;
+			clampVertical();
 		}
 	}
 	

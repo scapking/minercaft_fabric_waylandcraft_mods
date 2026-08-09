@@ -179,6 +179,7 @@ public class WaylandCraft implements ClientModInitializer {
 		
 		// 渲染共享窗口
 		for(SharedWindowDisplay sharedDisplay : sharedDisplays) {
+			sharedDisplay.clampIfResized();
 			sharedDisplay.render(ctx);
 		}
 	}
@@ -201,6 +202,9 @@ public class WaylandCraft implements ClientModInitializer {
 		
 		displays.removeIf((d) -> !d.isValid());
 		displays.forEach((d) -> d.updateGeometry());
+		
+		// 窗口分辨率变化后重新执行垂直钳制（底部不低于地面 0.4 格）
+		displays.forEach((d) -> d.clampIfResized());
 		
 		// 维护窗口实例别名（清理已消失窗口，为新窗口分配 wN）
 		HashSet<Long> aliveHandles = new HashSet<>();

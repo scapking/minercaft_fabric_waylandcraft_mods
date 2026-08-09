@@ -58,6 +58,13 @@ public class SharedWindowDisplay {
 	// 锚定距离
 	public double anchorDistance = 2.0;
 	
+	// 上次触发垂直钳制时的窗口尺寸（用于检测 resize 后重新钳制）
+	private int lastClampWidth = -1;
+	private int lastClampHeight = -1;
+	
+	// 窗口底部距地面的最小净空（方块），与本地 WindowDisplay 一致
+	public static final double GROUND_CLEARANCE = 0.4;
+	
 	public SharedWindowDisplay(long windowHandle, String windowTitle, String ownerName, RemoteWindowRenderer renderer) {
 		this.windowHandle = windowHandle;
 		this.windowTitle = windowTitle;
@@ -243,6 +250,40 @@ public class SharedWindowDisplay {
 	 */
 	public void adjustAnchorDistance(double delta) {
 		this.anchorDistance = Math.clamp(this.anchorDistance + delta * 0.1d, 0.5d, 20d);
+	}
+	
+	/**
+	 * 垂直约束：与本地 WindowDisplay.clampVertical() 一致 —
+	 * 法线水平化、down=(0,-1,0)、窗口底部不低于地面 GROUND_CLEARANCE 格。
+	 */
+	public void clampVertical() {
+		Vec3 horiz = new Vec3(normal.x, 0, normal.z);
+		if(horiz.lengthSqr() < 1e-6) horiz = new Vec3(0, 0, 1);
+		this.normal = horiz.normalize();
+		this.down = new Vec3(0, -1, 0);
+		
+		net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+		if(mc.level != null) {
+			int w = geometryWidth > 0 ? geometryWidth : width;
+			int h = geometryHeight > 0 ? geometryHeight : height;
+			int groundY = mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, (int) Math.floor(pivot.x), (int) Math.floor(pivot.z));
+			double halfHeight = (h / 2.0) * pixelScale() * viewScale;
+			double minY = groundY + GROUND_CLEARANCE + halfHeight;
+			if(pivot.y < minY) pivot = new Vec3(pivot.x, minY, pivot.z);
+		}
+	}
+	
+	/**
+	 * 窗口分辨率变化后自动重新执行垂直钳制（尺寸变化才触发）。
+	 */
+	public void clampIfResized() {
+		int w = geometryWidth > 0 ? geometryWidth : width;
+		int h = geometryHeight > 0 ? geometryHeight : height;
+		if(w != lastClampWidth || h != lastClampHeight) {
+			lastClampWidth = w;
+			lastClampHeight = h;
+			clampVertical();
+		}
 	}
 	
 	/**
