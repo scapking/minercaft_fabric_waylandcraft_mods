@@ -1,3 +1,9 @@
+# ⚠️ 已废弃 / DEPRECATED
+
+> 本文档描述的是 **Sci-Fi Design System UI 重构规范**。该科幻风格 UI 已在 **v0.2.0**（纯 CLI 模式）中整体移除，回归原版渲染风格。本文档仅作历史留档，**不再适用**。当前 UI 行为请见 [README_ZH.md](README_ZH.md)。
+
+---
+
 # WaylandCraft UI 重构规范（Sci-Fi Design System）
 
 ## 目标
