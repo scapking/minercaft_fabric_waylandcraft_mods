@@ -202,7 +202,10 @@ public class WaylandCraft implements ClientModInitializer {
 		
 		updateDisplayRequests();
 		
-		itemManager.giveItemsIfMissing(bridge.getNewToplevels());
+		// 对所有已映射窗口幂等地尝试给物品（服务端 giveItemIfMissing 检查背包已有则不重复给）。
+		// 不用 getNewToplevels()（一次性消费）：若服务端 10 tick 冷却或时序错过，
+		// 新窗口的物品会永久漏发；改为每 tick 全量检查，窗口出现后总能补上。
+		itemManager.giveItemsIfMissing(bridge.getMappedToplevels());
 		
 		boolean inWMScreen = Minecraft.getInstance().screen instanceof WindowManagerScreen;
 		

@@ -491,6 +491,7 @@ public class WaylandCraftCommand {
 		boolean launched = launchApp(wlc, entry);
 		if(launched) {
 			source.sendFeedback(Component.literal("§a✔ Launched: §f" + (entry.name != null ? entry.name : entry.appId) + "§r"));
+			source.sendFeedback(Component.literal(" §7窗口出现后将自动获得对应物品，右键长按放置到世界中§r"));
 		} else {
 			source.sendError(Component.literal("§c✘ Failed to launch: " + entry.appId + "§r"));
 		}
