@@ -154,9 +154,9 @@ public class RenderUtils {
 	);
 	
 	/** entity 顶点格式的写顶点辅助（Position+Color+UV0+UV1(overlay)+UV2(light)+Normal） */
-	private static void writeVanillaVertex(VertexConsumer buffer, Pose pose, Vec3 p, float u, float v) {
+	private static void writeVanillaVertex(VertexConsumer buffer, Pose pose, Vec3 p, float u, float v, int r, int g, int b, int a) {
 		buffer.addVertex(pose, p.toVector3f())
-			.setColor(255, 255, 255, 255)
+			.setColor(r, g, b, a)
 			.setUv(u, v)
 			.setOverlay(OverlayTexture.NO_OVERLAY)
 			.setLight(0xF000F0) // 全亮 lightmap（block 15 + sky 15）
@@ -164,23 +164,41 @@ public class RenderUtils {
 	}
 	
 	/**
-	 * Iris 兼容模式下的窗口几何实例 — 用原版 entity 管线渲染（单面四边形，无 cull 双面可见）
+	 * Iris 兼容模式下的窗口几何实例 — 用原版 entity 管线渲染。
+	 * 支持双面：正面（reverse=false）贴图白色，背面（reverse=true）反向绕序纯色，
+	 * 与本地自定义管线的 front/back 双四边形行为一致。
 	 */
-	public static final record VanillaWindowRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr, boolean flipV) implements CustomGeometryRenderer {
+	public static final record VanillaWindowRenderInstance(Vec3 tl, Vec3 bl, Vec3 br, Vec3 tr, boolean flipV, boolean reverse, int r, int g, int b, int a) implements CustomGeometryRenderer {
 		
 		@Override
 		public void render(Pose pose, VertexConsumer buffer) {
-			if(!flipV) {
-				writeVanillaVertex(buffer, pose, tl, 0.0f, 0.0f);
-				writeVanillaVertex(buffer, pose, bl, 0.0f, 1.0f);
-				writeVanillaVertex(buffer, pose, br, 1.0f, 1.0f);
-				writeVanillaVertex(buffer, pose, tr, 1.0f, 0.0f);
+			if(!reverse) {
+				if(!flipV) {
+					writeVanillaVertex(buffer, pose, tl, 0.0f, 0.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, bl, 0.0f, 1.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, br, 1.0f, 1.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, tr, 1.0f, 0.0f, r, g, b, a);
+				}
+				else {
+					writeVanillaVertex(buffer, pose, tl, 0.0f, 1.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, bl, 0.0f, 0.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, br, 1.0f, 0.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, tr, 1.0f, 1.0f, r, g, b, a);
+				}
 			}
 			else {
-				writeVanillaVertex(buffer, pose, tl, 0.0f, 1.0f);
-				writeVanillaVertex(buffer, pose, bl, 0.0f, 0.0f);
-				writeVanillaVertex(buffer, pose, br, 1.0f, 0.0f);
-				writeVanillaVertex(buffer, pose, tr, 1.0f, 1.0f);
+				if(!flipV) {
+					writeVanillaVertex(buffer, pose, tr, 1.0f, 0.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, br, 1.0f, 1.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, bl, 0.0f, 1.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, tl, 0.0f, 0.0f, r, g, b, a);
+				}
+				else {
+					writeVanillaVertex(buffer, pose, tr, 1.0f, 1.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, br, 1.0f, 0.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, bl, 0.0f, 0.0f, r, g, b, a);
+					writeVanillaVertex(buffer, pose, tl, 0.0f, 1.0f, r, g, b, a);
+				}
 			}
 		}
 		
@@ -208,8 +226,15 @@ public class RenderUtils {
 		// Iris 光影兼容：自定义管线会被 Iris 拦截抛异常，改用原版 entity 管线
 		if(IrisCompat.isIrisLoaded()) {
 			Function<Identifier, RenderType> rt = cutout ? VANILLA_ENTITY_CUTOUT : VANILLA_ENTITY_TRANSLUCENT;
-			// 原版 entity 管线（无 cull）单面四边形即可双面可见，避免与背面四边形 z-fighting
-			collector.submitCustomGeometry(poseStack, rt.apply(textureLocation), new VanillaWindowRenderInstance(tl, bl, br, tr, flipV));
+			// 正面：贴图白色
+			collector.submitCustomGeometry(poseStack, rt.apply(textureLocation), new VanillaWindowRenderInstance(tl, bl, br, tr, flipV, false, 255, 255, 255, 255));
+			// 背面：纯黑（与本地 NO_COLOR 的 vec4(vec3(0.0)) 一致）。
+			// 原版 entity 管线无 cull，若不偏移两面会 z-fighting；沿法线反向退后一点，
+			// 从前面看正面获胜、从后面看背面纯黑获胜。
+			Vec3 n = bl.subtract(tl).cross(br.subtract(tl)).normalize();
+			Vec3 off = n.scale(-0.01);
+			collector.submitCustomGeometry(poseStack, rt.apply(textureLocation), new VanillaWindowRenderInstance(
+				tl.add(off), bl.add(off), br.add(off), tr.add(off), flipV, true, 0, 0, 0, 255));
 			return;
 		}
 		
