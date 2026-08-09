@@ -1,134 +1,210 @@
 # WaylandCraft 🎮🪟
 
-**Minecraft内でLinuxデスクトップアプリを実行** — WaylandコンポーザをMinecraftに統合するFabric Mod。プレイヤーはゲーム内でLinuxデスクトップウィンドウを表示・操作できます。マルチプレイヤーのウィンドウ共有に対応。
+**Minecraft の中で Linux デスクトップアプリを動かす** — Wayland compositor を Minecraft に統合する Fabric mod。ゲームワールド内で Linux デスクトップのウィンドウを表示・操作でき、マルチプレイでのウィンドウ共有にも対応しています。
 
-> ⚠️ このプロジェクトは[WaylandCraft](https://github.com/evvie-jpg/waylandcraft)のオリジナルプロジェクトに基づいています。マルチプレイヤー表示機能はAIが実装しました。**機能と安全性は保証されません。** 自己責任でご利用ください。
+> ⚠️ このプロジェクトは元の [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) をベースに、マルチプレイ表示などの機能を AI 支援で実装したものです。**機能・安全性は保証されません。自己責任でご利用ください。**
 
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-26.1.2-green" />
-  <img src="https://img.shields.io/badge/Fabric-0.19.3-blue" />
+  <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
+  <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Rust-Native%20Bridge-red" />
+  <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
 </p>
 
 ---
 
 ## ダウンロード
 
-👉 **[最新リリース](https://github.com/almightydb/minercaft_fabric_waylandcraft_mods/releases/latest)** — `waylandcraft.jar`をダウンロードして`mods/`フォルダに入れてください。
+👉 **[最新リリース (v0.2.6)](https://github.com/scapking/minercaft_fabric_waylandcraft_mods/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
 
-## 既知の問題
+> 上流リポジトリ（almightydb）の Releases ページは更新が遅れています。最新版は上記リンクから取得してください。
 
-1. **デスクトップウィンドウのキャプチャが動作しない** — XDG Portal + PipeWireキャプチャは現在使用不可
-2. **Flatpakアプリが表示されない** — Flatpakサンドボックスが`WAYLAND_DISPLAY`を上書きし、アプリがゲーム内ではなくデスクトップに起動する
-3. **ウィンドウの移動が制限されている** — ウィンドウは上下左右にのみ移動可能。前後の移動や角度調整は不可
+---
 
-## 実装済み機能
+## 機能
 
 | 機能 | 説明 |
 |------|------|
-| マルチプレイヤー表示 | 他のプレイヤーにウィンドウを共有し、相手のゲーム世界にレンダリング |
-| 権限管理 | 4段階：NONE / VIEW / INTERACT / CONTROL |
-| 解像度設定 | 設定可能なスケール (0.1x – 1.0x) |
-| ビットレート制御 | Token Bucketアルゴリズム、設定可能な最大ビットレート |
-| 適応品質 | 帯域幅に基づいて解像度と品質を自動調整 |
-| パフォーマンス最適化 | PBO非同期リードバック、GPUスケーリング、直接メモリテクスチャ書き込み |
+| 純 CLI モード | SF 風 UI を廃止しバニラ描画に回帰。操作はすべて `/wl` コマンド |
+| ワールド内ウィンドウ | Wayland ウィンドウをゲームワールドに表示。ドラッグ・リサイズ・ピン留め・非表示 |
+| 統一レンダリング | ローカルとリモート共有ウィンドウで同一の描画経路を使用 |
+| マルチプレイ共有 | ウィンドウを他プレイヤーに共有し、相手のワールドにリアルタイム描画 |
+| デスクトップキャプチャ | XDG Desktop Portal + PipeWire によるウィンドウ取得 |
+| 権限管理 | 4 段階: NONE / VIEW / INTERACT / CONTROL |
+| Iris（シェーダー）互換 | Iris 導入時は自動的にバニラパイプラインへフォールバックし、シェーダー有効でも正常表示 |
+| 適応画質 | スケール・JPEG 品質・フレームレート・ビットレートを設定可能。プリセット内蔵 |
+| パフォーマンス | PBO 非同期リードバック、GPU スケーリング、差分フレーム転送、ハートビート、PNG/JPEG 自動切替 |
 
-> ほとんどの機能は`/wl`コマンドによるコマンドライン駆動です。
+---
 
-## コマンドシステム
+## インストール
+
+### 要件
+
+- Minecraft **26.1.2**（Java Edition）
+- Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2**（または対応バージョン）
+- **Java 25**
+- Linux + **Wayland** セッション（ウィンドウキャプチャはネイティブライブラリが担当。X11 は非対応）
+
+### 手順
+
+1. Fabric Loader と Fabric API をインストール
+2. `waylandcraft.jar` を `.minecraft/mods/` に配置
+3. **マルチプレイの場合、サーバー側にも mod の導入が必要**（`give` / `permission` / `share` はサーバー側に登録されており、未導入だと `/wl give` などが静かに失敗します）
+4. ゲームを起動（シングルプレイのワールドは内蔵サーバーで、クライアントとサーバーで `mods/` を共用します）
+
+---
+
+## クイックスタート
+
+1. アプリを起動: `/wl launch firefox`
+2. ウィンドウ一覧: `/wl list windows`
+3. ウィンドウをアイテム化: `/wl give <handle>` → **右クリック長押し**でワールドに設置
+4. キーボードを捕獲して操作: `/wl grab <handle>`（または `G` キーで切替）
+5. 共有: `/wl share start <handle>`
+
+### キーバインド
+
+| キー | 機能 |
+|------|------|
+| `B` | ウィンドウマネージャ画面を開く |
+| `G` | キーボード捕獲 / 解放を切替（捕獲中はキーがウィンドウに透過） |
+| `右クリック長押し` + WindowItem | ウィンドウをワールドに表示 |
+
+> その他の操作はすべて `/wl` コマンドで行います。一覧は下記参照。
+
+---
+
+## コマンド
+
+`<handle>` は 3 形式に対応: `0x` 短ハンドル / 完全ハンドル / ウィンドウ別名（例 `firefox_esr`）。同名ウィンドウが複数ある場合は `別名:N`（例 `firefox:2`）で指定します。
+
+### ウィンドウ管理
+
+| コマンド | 機能 |
+|----------|------|
+| `/wl list windows` | compositor 内のウィンドウ一覧 |
+| `/wl list apps` | 起動可能なアプリ一覧 |
+| `/wl list desktop` | キャプチャ可能なデスクトップウィンドウ一覧 |
+| `/wl launch <app>` | アプリを起動 |
+| `/wl capture` | Portal 選択を開いてデスクトップウィンドウをキャプチャ |
+| `/wl give <handle>` | ウィンドウをアイテム化してインベントリへ |
+| `/wl take <handle>` | ウィンドウアイテムを回収 |
+| `/wl grab <handle>` | ウィンドウを掴む（マウスでドラッグ、ホイールで前後移動） |
+| `/wl show <handle>` | ウィンドウをワールドに表示 |
+| `/wl hide <handle>` | ワールドから非表示 |
+| `/wl pin <handle>` | ピン留め（非表示・最小化の影響を受けず表示維持） |
+| `/wl unpin <handle>` | ピン留め解除 |
+| `/wl close <handle>` | アプリを終了（ウィンドウを閉じる） |
+| `/wl resize <handle> <w> <h>` | ウィンドウ解像度を変更 |
 
 ### 共有管理
 
 | コマンド | 機能 |
-|------|------|
-| `/wl share start <handle>` | ウィンドウ共有を開始 |
-| `/wl unshare <handle>` | 共有を停止 |
-| `/wl share quality <handle> <s> <q> <fps>` | 品質設定（スケール、品質、FPS） |
-| `/wl share quality-reset <handle>` | 品質をデフォルトにリセット |
-| `/wl share config <handle> <param> <value>` | 個別パラメータ設定 |
-| `/wl share preset <handle> <preset>` | プリセット適用 |
-| `/wl share info <handle>` | 現在の設定を表示 |
-| `/wl share resolution <handle> <w> <h>` | 目標解像度設定 |
+|----------|------|
+| `/wl share start <handle>` | 共有開始 |
+| `/wl share stop <handle>` | 共有停止 |
+| `/wl share quality <handle> <s> <q> <fps>` | 画質設定（スケール・品質・fps） |
+| `/wl share preset <handle> <preset>` | プリセット適用（下記参照） |
+| `/wl share config <handle> <param> <value>` | 単一パラメータ設定 |
+| `/wl share reset <handle>` | 画質をデフォルトに戻す |
+| `/wl share info <handle>` | 現在の共有設定を表示 |
+| `/wl share resolution <handle> <w> <h>` | 目標解像度を設定 |
 | `/wl share stats <handle>` | 共有統計を表示 |
 
 ### 権限管理
 
 | コマンド | 機能 |
-|------|------|
-| `/wl perm list` | 全権限を一覧表示 |
-| `/wl perm default <PERM>` | デフォルト権限を設定 |
-| `/wl perm allow <player> <PERM>` | ホワイトリストに追加 |
-| `/wl perm deny <player>` | ブラックリストに追加 |
-| `/wl perm remove <player>` | プレイヤーを削除 |
+|----------|------|
+| `/wl permission list` | 権限一覧 |
+| `/wl permission default <PERM>` | デフォルト権限を設定 |
+| `/wl permission allow <player> <PERM>` | ホワイトリスト追加 |
+| `/wl permission deny <player>` | ブラックリスト追加 |
+| `/wl permission remove <player>` | プレイヤーを削除 |
 
-### ウィンドウ管理
+> `PERM`: `NONE` / `VIEW` / `INTERACT` / `CONTROL`
+
+### 設定
 
 | コマンド | 機能 |
-|------|------|
-| `/wl list windows` | コンポーザのウィンドウ一覧 |
-| `/wl list apps` | 起動可能なアプリ一覧 |
-| `/wl give create <name>` | アプリをコンポーザに起動 |
-| `/wl remove <handle>` | ウィンドウアイテムを削除 |
-| `/wl close <handle>` | ウィンドウを閉じる |
-| `/wl resize <handle> <w> <h>` | ウィンドウサイズ変更 |
+|----------|------|
+| `/wl settings list` | 現在の設定一覧 |
+| `/wl settings set <key> <value>` | 設定変更 |
 
-### 基本操作
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| `pixelsPerBlock` | `500` | ワールド内 1 ブロックあたりのウィンドウ画素密度 |
+| `windowAntialiasing` | `false` | ウィンドウ RGSS アンチエイリアス（カスタムパイプライン時のみ） |
+| `focusOnHover` | `false` | マウスホバーで自動フォーカス |
 
-| キー | 機能 |
-|------|------|
-| `B` | ウィンドウマネージャー |
-| `V` | アプリランチャー |
-| `N` | 共有ウィンドウマネージャー |
-| `G` | キーボードキャプチャ/解除 |
-| `右クリック長押し` + WindowItem | 世界にウィンドウを表示 |
-
-### 設定パラメータ
+### 共有パラメータ & プリセット
 
 | パラメータ | 説明 | 範囲 |
-|------|------|------|
+|-----------|------|------|
 | `scale` | 解像度スケール | 0.1 – 1.0 |
-| `quality` | JPEG品質 | 0.1 – 1.0 |
+| `quality` | JPEG 品質 | 0.1 – 1.0 |
 | `fps` | 最大フレームレート | 5 – 120 |
 | `bitrate` | 最大ビットレート (kbps) | 0 = 無制限 |
-| `diffThreshold` | ピクセル変化閾値 | 0.001 – 1.0 |
-
-### プリセット
+| `diffThreshold` | 画素変化閾値 | 0.001 – 1.0 |
 
 | プリセット | スケール | 品質 | FPS | ビットレート |
-|------|-------|---------|-----|---------|
-| `performance` | 0.25 | 0.5 | 60 | 1000kbps |
-| `balanced` | 0.5 | 0.7 | 30 | 2000kbps |
+|-----------|---------|------|-----|------------|
+| `performance` | 0.25 | 0.5 | 60 | 1000 kbps |
+| `balanced` | 0.5 | 0.7 | 30 | 2000 kbps |
 | `quality` | 1.0 | 1.0 | 30 | 無制限 |
-| `lowlatency` | 0.35 | 0.6 | 60 | 1500kbps |
+| `lowlatency` | 0.35 | 0.6 | 60 | 1500 kbps |
+
+---
+
+## Iris（シェーダー）互換
+
+- Iris シェーダー有効時もウィンドウは正常表示：Iris 検出時は**バニラ entity パイプライン**へ自動フォールバックし、ウィンドウ内容は常に最大輝度（シェーダー照明の影響なし）
+- シェーダー無効時はカスタムパイプラインを使用し、RGSS アンチエイリアス（`windowAntialiasing`）が利用可能
+- どちらのモードもウィンドウは**表面がテクスチャ、裏面が単色黒**で同一挙動
+
+---
+
+## 注意事項
+
+- **サーバーにも mod の導入が必要**：マルチプレイではサーバー側機能（`give` / `permission` / `share`）がサーバー導入に依存し、未導入だとリクエストが黙って破棄されます
+- 角丸・影のわずかなジャギーは JPEG の仕様です。透明ピクセルを含むウィンドウは PNG に自動切替されアルファを保持します
+- デスクトップキャプチャ（`/wl capture`）は XDG Desktop Portal と Wayland セッションが必要です
+- ゲーム内ヘルプ: `/wl help`
+
+---
 
 ## ビルド
 
 ```bash
-# 前提条件：Java 25, Rustツールチェーン, Wayland開発ライブラリ
+# 要件: Java 25、Rust ツールチェーン、Wayland 開発ライブラリ
 apt install libwayland-dev libxkbcommon-dev pkg-config libclang-dev
 
-# 1. Rustネイティブライブラリのビルド
+# 1. Rust ネイティブライブラリをビルド（release 必須。build.gradle は release .so を優先）
 source ~/.cargo/env
 cd native && cargo build --release
-cp target/release/libwaylandcraft.so target/debug/libwaylandcraft.so
 
-# 2. Java Modのビルド
-cd /workspace/waylandcraft
-./gradlew clean build
+# 2. Java mod をビルド
+cd .. && ./gradlew clean build
 
-# 出力：build/libs/waylandcraft.jar (~2.0MB)
+# 出力: build/libs/waylandcraft.jar (~2.0MB)
 ```
+
+> ⚠️ パッケージされるネイティブライブラリが `native/target/release/libwaylandcraft.so`（約 3.7MB）であることを確認してください。debug ビルド（176MB・デバッグシンボル付き）を誤って同梱すると jar が 39MB になります。
+
+---
 
 ## 技術スタック
 
 | レイヤー | 技術 |
-|------|------|
-| ゲーム | Java 25, Fabric Loader 0.19.3, Fabric API 0.151.0 |
+|----------|------|
+| ゲーム | Java 25, Fabric Loader 0.19.2+, Fabric API 0.147.0+ |
 | ネイティブブリッジ | Rust, JNI |
 | Wayland | Smithay, wayland-client, wlr-foreign-toplevel-management |
-| 画像 | PBOダブルバッファ, glBlitFramebuffer, JPEG, MemoryUtil |
-| ネットワーク | Fabric Networking API, カスタムPayloadプロトコル |
+| 画像 | PBO 非同期リードバック, glBlitFramebuffer, JPEG/PNG, MemoryUtil |
+| ネットワーク | Fabric Networking API, カスタム Payload プロトコル |
+
+---
 
 ## ライセンス
 
@@ -137,5 +213,5 @@ MIT License
 ## 謝辞
 
 - [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) — オリジナルプロジェクト
-- [Smithay](https://github.com/Smithay/smithay) — Waylandコンポーザフレームワーク
+- [Smithay](https://github.com/Smithay/smithay) — Wayland compositor フレームワーク
 - [Fabric](https://fabricmc.net/) — Minecraft mod loader

@@ -1,66 +1,84 @@
 # WaylandCraft 🎮🪟
 
-**在 Minecraft 里运行 Linux 桌面应用** — 一个 Fabric mod，将 Wayland compositor 功能集成到 Minecraft 中，让玩家可以在游戏世界中查看和交互 Linux 桌面窗口。支持多人窗口共享。
+**在 Minecraft 里运行 Linux 桌面应用** — 一个 Fabric mod，将 Wayland compositor 功能集成到 Minecraft 中，让玩家可以在游戏世界中查看和交互 Linux 桌面窗口，并支持多人窗口共享。
 
-> ⚠️ 本项目基于 [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) 原始项目，多人显示功能由 AI 辅助实现。功能和安全性不保证稳定，请自行承担使用风险。
+> ⚠️ 本项目基于 [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) 原始项目，多人显示等功能由 AI 辅助实现。**功能和安全性不保证稳定，请自行承担使用风险。**
 
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-26.1.2-green" />
-  <img src="https://img.shields.io/badge/Fabric-0.19.3-blue" />
+  <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
+  <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Rust-Native%20Bridge-red" />
+  <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release](https://github.com/almightydb/minercaft_fabric_waylandcraft_mods/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release（v0.2.6）](https://github.com/scapking/minercaft_fabric_waylandcraft_mods/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
-## 已知问题
+> 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 
-1. **无法捕获桌面窗口** — XDG Portal + PipeWire 捕获目前不可用
-2. **Flatpak 类应用无法显示** — Flatpak 沙盒覆盖了 `WAYLAND_DISPLAY`，应用会启动到桌面而非游戏内
-3. **窗口移动受限** — 窗口只能上下左右移动，无法前后移动，无法调整角度
+---
 
-## 已实现功能
+## 功能特性
 
 | 功能 | 说明 |
 |------|------|
-| 多人窗口共享 | 将窗口共享给其他玩家，在对方游戏世界中渲染 |
+| 纯命令行模式 | 移除科幻风格 UI，回归原版渲染风格，所有操作通过 `/wl` 命令完成 |
+| 窗口世界化 | 将 Wayland 窗口显示在游戏世界中，可拖动、缩放、钉住、隐藏 |
+| 统一渲染 | 本地窗口与远程共享窗口走同一渲染路径，显示效果一致 |
+| 多人窗口共享 | 将窗口共享给其他玩家，在对方游戏世界中实时渲染 |
+| 桌面窗口捕获 | XDG Desktop Portal + PipeWire 捕获桌面窗口 |
 | 权限管理 | 四级：NONE / VIEW / INTERACT / CONTROL |
-| 分辨率设置 | 可配置缩放比例 (0.1x – 1.0x) |
-| 码率控制 | Token Bucket 算法，可配置最大码率 |
-| 自适应画质 | 根据带宽自动调整分辨率和质量 |
-| 性能优化 | PBO 异步回读、GPU 缩放、直接内存写入纹理 |
+| 光影（Iris）兼容 | 检测到 Iris 时自动降级用原版管线渲染，开光影也能正常显示窗口 |
+| 自适应画质 | 可配置缩放比例、JPEG 质量、帧率、码率，内置预设 |
+| 性能优化 | PBO 异步回读、GPU 缩放、差分帧传输、静止心跳帧、PNG/JPEG 自动切换 |
 
-> 大部分功能通过命令行执行（`/wl` 命令）。
+---
+
+## 安装
+
+### 前置要求
+
+- Minecraft **26.1.2**（Java Edition）
+- Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2**（或对应版本）
+- **Java 25**
+- Linux + **Wayland** 会话（原生库负责窗口捕获，X11 下不可用）
+
+### 步骤
+
+1. 安装 Fabric Loader 与 Fabric API
+2. 将 `waylandcraft.jar` 放入 `.minecraft/mods/`
+3. **多人游戏：服务端也必须安装本 mod**（`give` 物品发放、权限管理、共享窗口等逻辑注册在服务端；服务端未装 mod 时这些功能不生效——例如 `/wl give` 会静默失败）
+4. 启动游戏（单人世界即内置服务器，客户端服务端共用 `mods/` 目录即可）
+
+---
+
+## 快速上手
+
+1. 启动一个应用：`/wl launch firefox`（或按 `V` 键启动器）
+2. 查看窗口列表：`/wl list windows`
+3. 把窗口变成物品：`/wl give <handle>` → **右键长按物品**放置到世界中
+4. 捕获键盘操作窗口：`/wl grab <handle>`（或按 `G` 键切换捕获/释放）
+5. 共享给队友：`/wl share start <handle>`
+
+### 按键
+
+| 按键 | 功能 |
+|------|------|
+| `B` | 打开窗口管理器屏幕 |
+| `G` | 捕获 / 释放键盘（抓取状态时按键直接透传给窗口） |
+| `右键长按` + WindowItem | 在世界中显示窗口 |
+
+> 所有其他操作均通过 `/wl` 命令完成，完整列表见下。
+
+---
 
 ## 命令系统
 
-### 共享管理
-
-| 命令 | 功能 |
-|------|------|
-| `/wl share start <handle>` | 开始共享窗口 |
-| `/wl unshare <handle>` | 停止共享 |
-| `/wl share quality <handle> <s> <q> <fps>` | 设置画质（缩放、质量、帧率） |
-| `/wl share quality-reset <handle>` | 重置画质为默认值 |
-| `/wl share config <handle> <param> <value>` | 设置单个参数 |
-| `/wl share preset <handle> <preset>` | 应用预设 |
-| `/wl share info <handle>` | 显示当前配置 |
-| `/wl share resolution <handle> <w> <h>` | 设置目标分辨率 |
-| `/wl share stats <handle>` | 显示共享统计 |
-
-### 权限管理
-
-| 命令 | 功能 |
-|------|------|
-| `/wl perm list` | 列出所有权限 |
-| `/wl perm default <PERM>` | 设置默认权限 |
-| `/wl perm allow <player> <PERM>` | 加入白名单 |
-| `/wl perm deny <player>` | 加入黑名单 |
-| `/wl perm remove <player>` | 移除玩家 |
+`<handle>` 支持三种格式：`0x` 短句柄 / 完整句柄 / 窗口别名（如 `firefox_esr`）；多个同名窗口可用 `别名:N` 指定第 N 个（如 `firefox:2`）。
 
 ### 窗口管理
 
@@ -68,22 +86,59 @@
 |------|------|
 | `/wl list windows` | 列出 compositor 中的窗口 |
 | `/wl list apps` | 列出可启动的应用 |
-| `/wl give create <name>` | 启动应用到 compositor |
-| `/wl remove <handle>` | 移除窗口物品 |
-| `/wl close <handle>` | 关闭窗口 |
-| `/wl resize <handle> <w> <h>` | 调整窗口大小 |
+| `/wl list desktop` | 列出可捕获的桌面窗口 |
+| `/wl launch <app>` | 启动应用 |
+| `/wl capture` | 弹出 Portal 选择窗口，捕获桌面窗口 |
+| `/wl give <handle>` | 把窗口变为物品放入背包 |
+| `/wl take <handle>` | 从背包收回窗口物品 |
+| `/wl grab <handle>` | 抓取窗口（鼠标在世界中拖动，滚轮前后移动） |
+| `/wl show <handle>` | 在世界中显示窗口 |
+| `/wl hide <handle>` | 从世界中隐藏窗口显示 |
+| `/wl pin <handle>` | 钉住窗口（世界中保持显示，不受隐藏/最小化影响） |
+| `/wl unpin <handle>` | 解除钉住 |
+| `/wl close <handle>` | 终止应用进程（关闭窗口） |
+| `/wl resize <handle> <w> <h>` | 调整窗口分辨率 |
 
-### 基本操作
+### 共享管理
 
-| 按键 | 功能 |
+| 命令 | 功能 |
 |------|------|
-| `B` | 窗口管理器 |
-| `V` | 应用启动器 |
-| `N` | 共享窗口管理器 |
-| `G` | 捕获/释放键盘 |
-| `右键长按` + WindowItem | 在世界中显示窗口 |
+| `/wl share start <handle>` | 开始共享窗口 |
+| `/wl share stop <handle>` | 停止共享 |
+| `/wl share quality <handle> <s> <q> <fps>` | 设置画质（缩放、质量、帧率） |
+| `/wl share preset <handle> <preset>` | 应用预设（见下） |
+| `/wl share config <handle> <param> <value>` | 设置单个参数 |
+| `/wl share reset <handle>` | 重置画质为默认值 |
+| `/wl share info <handle>` | 显示当前共享配置 |
+| `/wl share resolution <handle> <w> <h>` | 设置目标分辨率 |
+| `/wl share stats <handle>` | 显示共享统计 |
 
-### 配置参数
+### 权限管理
+
+| 命令 | 功能 |
+|------|------|
+| `/wl permission list` | 列出所有权限 |
+| `/wl permission default <PERM>` | 设置默认权限 |
+| `/wl permission allow <player> <PERM>` | 加入白名单 |
+| `/wl permission deny <player>` | 加入黑名单 |
+| `/wl permission remove <player>` | 移除玩家 |
+
+> `PERM`：`NONE` / `VIEW` / `INTERACT` / `CONTROL`
+
+### 设置
+
+| 命令 | 功能 |
+|------|------|
+| `/wl settings list` | 列出当前设置 |
+| `/wl settings set <key> <value>` | 修改设置 |
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `pixelsPerBlock` | `500` | 窗口在世界中每方块对应的像素密度 |
+| `windowAntialiasing` | `false` | 窗口渲染抗锯齿（RGSS，仅无光影时生效） |
+| `focusOnHover` | `false` | 鼠标悬停窗口时自动获得焦点 |
+
+### 共享画质参数与预设
 
 | 参数 | 说明 | 范围 |
 |------|------|------|
@@ -93,42 +148,63 @@
 | `bitrate` | 最大码率 (kbps) | 0 = 无限 |
 | `diffThreshold` | 像素变化阈值 | 0.001 – 1.0 |
 
-### 预设配置
-
 | 预设 | 缩放 | 质量 | 帧率 | 码率 |
 |------|-------|---------|-----|---------|
-| `performance` | 0.25 | 0.5 | 60 | 1000kbps |
-| `balanced` | 0.5 | 0.7 | 30 | 2000kbps |
+| `performance` | 0.25 | 0.5 | 60 | 1000 kbps |
+| `balanced` | 0.5 | 0.7 | 30 | 2000 kbps |
 | `quality` | 1.0 | 1.0 | 30 | 无限 |
-| `lowlatency` | 0.35 | 0.6 | 60 | 1500kbps |
+| `lowlatency` | 0.35 | 0.6 | 60 | 1500 kbps |
+
+---
+
+## 光影（Iris）兼容
+
+- 开着 Iris 光影也能正常显示窗口：检测到 Iris 时窗口自动改用**原版 entity 管线**渲染，内容始终满亮度（不受光影光照影响）
+- 无光影时使用自定义管线，支持 RGSS 抗锯齿（`windowAntialiasing`）
+- 两种模式下窗口**正面贴图、背面纯黑**，行为一致
+
+---
+
+## 使用提示
+
+- **服务端必须装 mod**：多人模式下 `give` / `permission` / `share` 等服务端功能依赖服务端安装 mod，否则请求会被静默丢弃
+- 窗口圆角/阴影的轻微锯齿是 JPEG 编码的正常现象；含透明像素的窗口会自动改用 PNG 保留 alpha
+- 桌面捕获（`/wl capture`）依赖系统 XDG Desktop Portal，需要 Wayland 会话
+- 完整命令帮助可在游戏内查看：`/wl help`
+
+---
 
 ## 构建
 
 ```bash
-# 前置要求：Java 25, Rust 工具链, Wayland 开发库
+# 前置要求：Java 25、Rust 工具链、Wayland 开发库
 apt install libwayland-dev libxkbcommon-dev pkg-config libclang-dev
 
-# 1. 编译 Rust 原生库
+# 1. 编译 Rust 原生库（必须用 release 构建，build.gradle 会优先打包 release .so）
 source ~/.cargo/env
 cd native && cargo build --release
-cp target/release/libwaylandcraft.so target/debug/libwaylandcraft.so
 
 # 2. 编译 Java mod
-cd /workspace/waylandcraft
-./gradlew clean build
+cd .. && ./gradlew clean build
 
 # 输出：build/libs/waylandcraft.jar (~2.0MB)
 ```
+
+> ⚠️ 发布前务必确认打包的是 `native/target/release/libwaylandcraft.so`（约 3.7MB）。若误打包 debug 构建（176MB 带调试符号），jar 会膨胀到 39MB。
+
+---
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 游戏 | Java 25, Fabric Loader 0.19.3, Fabric API 0.151.0 |
+| 游戏 | Java 25, Fabric Loader 0.19.2+, Fabric API 0.147.0+ |
 | 原生桥接 | Rust, JNI |
 | Wayland | Smithay, wayland-client, wlr-foreign-toplevel-management |
-| 图像 | PBO 双缓冲, glBlitFramebuffer, JPEG, MemoryUtil |
+| 图像 | PBO 异步回读, glBlitFramebuffer, JPEG/PNG, MemoryUtil |
 | 网络 | Fabric Networking API, 自定义 Payload 协议 |
+
+---
 
 ## 许可证
 

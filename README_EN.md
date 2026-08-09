@@ -2,133 +2,209 @@
 
 **Run Linux desktop apps inside Minecraft** — A Fabric mod that integrates a Wayland compositor into Minecraft, allowing players to view and interact with Linux desktop windows in-game. Supports multi-player window sharing.
 
-> ⚠️ This project is based on the original [WaylandCraft](https://github.com/evvie-jpg/waylandcraft). Multi-player display features were AI-implemented. **Functionality and security are NOT guaranteed.** Use at your own risk.
+> ⚠️ This project is based on the original [WaylandCraft](https://github.com/evvie-jpg/waylandcraft). Multi-player display and other features were AI-implemented. **Functionality and security are NOT guaranteed.** Use at your own risk.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-26.1.2-green" />
-  <img src="https://img.shields.io/badge/Fabric-0.19.3-blue" />
+  <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
+  <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Rust-Native%20Bridge-red" />
+  <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
 </p>
 
 ---
 
 ## Download
 
-👉 **[Latest Release](https://github.com/almightydb/minercaft_fabric_waylandcraft_mods/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+👉 **[Latest Release (v0.2.6)](https://github.com/scapking/minercaft_fabric_waylandcraft_mods/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
-## Known Issues
+> The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 
-1. **Desktop window capture does not work** — XDG Portal + PipeWire capture is currently non-functional
-2. **Flatpak apps won't display** — Flatpak sandbox overrides `WAYLAND_DISPLAY`, apps launch to desktop instead of in-game
-3. **Window movement is limited** — Windows can only move up/down/left/right. No forward/backward movement, no angle adjustment
+---
 
-## Current Features
+## Features
 
 | Feature | Description |
 |---------|-------------|
-| Multi-Player Display | Share windows to other players, rendered in their world |
-| Permission System | 4-level: NONE / VIEW / INTERACT / CONTROL |
-| Resolution Settings | Configurable scale (0.1x – 1.0x) |
-| Bitrate Control | Token Bucket algorithm with configurable max bitrate |
-| Adaptive Quality | Auto-adjust resolution and quality based on bandwidth |
-| Performance Optimization | PBO async readback, GPU scaling, direct memory texture write |
+| Pure CLI mode | Sci-fi UI removed; vanilla rendering restored; everything is driven by `/wl` commands |
+| Windows in the world | Display Wayland windows in the game world; drag, resize, pin, hide |
+| Unified rendering | Local and remotely shared windows share the same render path for identical visuals |
+| Multi-player sharing | Share windows to other players, rendered live in their world |
+| Desktop capture | XDG Desktop Portal + PipeWire window capture |
+| Permissions | 4 levels: NONE / VIEW / INTERACT / CONTROL |
+| Iris (shaders) compatible | Falls back to vanilla pipeline automatically when Iris is loaded; windows display correctly with shaders on |
+| Adaptive quality | Configurable scale, JPEG quality, framerate, bitrate; built-in presets |
+| Performance | PBO async readback, GPU scaling, diff-frame transfer, heartbeat frames, auto PNG/JPEG |
 
-> Most features are command-line driven via `/wl` command.
+---
+
+## Installation
+
+### Requirements
+
+- Minecraft **26.1.2** (Java Edition)
+- Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2** (or matching version)
+- **Java 25**
+- Linux + **Wayland** session (the native library handles window capture; X11 is not supported)
+
+### Steps
+
+1. Install Fabric Loader and Fabric API
+2. Put `waylandcraft.jar` into `.minecraft/mods/`
+3. **Multi-player: the mod must also be installed on the server** (`give`, `permission`, `share` logic is registered server-side; without it these features silently fail — e.g. `/wl give` does nothing)
+4. Launch the game (a single-player world is a built-in server; client and server share the same `mods/` folder)
+
+---
+
+## Quick Start
+
+1. Launch an app: `/wl launch firefox`
+2. List windows: `/wl list windows`
+3. Turn a window into an item: `/wl give <handle>` → **hold right-click** on the item to place it in the world
+4. Capture the keyboard to operate the window: `/wl grab <handle>` (or press `G` to toggle)
+5. Share with teammates: `/wl share start <handle>`
+
+### Keybinds
+
+| Key | Function |
+|-----|----------|
+| `B` | Open the window manager screen |
+| `G` | Toggle keyboard capture / release (while captured, keys pass through to the window) |
+| `Right-click hold` + WindowItem | Display window in the world |
+
+> All other operations go through `/wl` commands — full list below.
+
+---
 
 ## Commands
+
+`<handle>` accepts three formats: `0x` short handle / full handle / window alias (e.g. `firefox_esr`). For duplicate windows use `alias:N` (e.g. `firefox:2`).
+
+### Window Management
+
+| Command | Function |
+|---------|----------|
+| `/wl list windows` | List windows in the compositor |
+| `/wl list apps` | List launchable apps |
+| `/wl list desktop` | List capturable desktop windows |
+| `/wl launch <app>` | Launch an app |
+| `/wl capture` | Open the Portal picker to capture a desktop window |
+| `/wl give <handle>` | Turn a window into an item in your inventory |
+| `/wl take <handle>` | Take the window item back |
+| `/wl grab <handle>` | Grab the window (drag with mouse; scroll to move forward/backward) |
+| `/wl show <handle>` | Show the window in the world |
+| `/wl hide <handle>` | Hide the window from the world |
+| `/wl pin <handle>` | Pin the window (stays displayed, unaffected by hide/minimize) |
+| `/wl unpin <handle>` | Unpin the window |
+| `/wl close <handle>` | Terminate the app (close the window) |
+| `/wl resize <handle> <w> <h>` | Resize the window |
 
 ### Share Management
 
 | Command | Function |
-|------|------|
-| `/wl share start <handle>` | Start sharing window |
-| `/wl unshare <handle>` | Stop sharing |
+|---------|----------|
+| `/wl share start <handle>` | Start sharing the window |
+| `/wl share stop <handle>` | Stop sharing |
 | `/wl share quality <handle> <s> <q> <fps>` | Set quality (scale, quality, fps) |
-| `/wl share quality-reset <handle>` | Reset quality to default |
-| `/wl share config <handle> <param> <value>` | Set single parameter |
-| `/wl share preset <handle> <preset>` | Apply preset |
-| `/wl share info <handle>` | Show current config |
+| `/wl share preset <handle> <preset>` | Apply a preset (below) |
+| `/wl share config <handle> <param> <value>` | Set a single parameter |
+| `/wl share reset <handle>` | Reset quality to defaults |
+| `/wl share info <handle>` | Show current share config |
 | `/wl share resolution <handle> <w> <h>` | Set target resolution |
 | `/wl share stats <handle>` | Show sharing statistics |
 
 ### Permission Management
 
 | Command | Function |
-|------|------|
-| `/wl perm list` | List all permissions |
-| `/wl perm default <PERM>` | Set default permission |
-| `/wl perm allow <player> <PERM>` | Add to whitelist |
-| `/wl perm deny <player>` | Add to blacklist |
-| `/wl perm remove <player>` | Remove player |
+|---------|----------|
+| `/wl permission list` | List all permissions |
+| `/wl permission default <PERM>` | Set the default permission |
+| `/wl permission allow <player> <PERM>` | Add to whitelist |
+| `/wl permission deny <player>` | Add to blacklist |
+| `/wl permission remove <player>` | Remove a player |
 
-### Window Management
+> `PERM`: `NONE` / `VIEW` / `INTERACT` / `CONTROL`
+
+### Settings
 
 | Command | Function |
-|------|------|
-| `/wl list windows` | List windows in compositor |
-| `/wl list apps` | List launchable apps |
-| `/wl give create <name>` | Launch app to compositor |
-| `/wl remove <handle>` | Remove window item |
-| `/wl close <handle>` | Close window |
-| `/wl resize <handle> <w> <h>` | Resize window |
+|---------|----------|
+| `/wl settings list` | List current settings |
+| `/wl settings set <key> <value>` | Change a setting |
 
-### Basic Controls
+| Param | Default | Description |
+|-------|---------|-------------|
+| `pixelsPerBlock` | `500` | Window pixel density per block in the world |
+| `windowAntialiasing` | `false` | Window RGSS antialiasing (custom pipeline only, no shaders) |
+| `focusOnHover` | `false` | Auto-focus window on mouse hover |
 
-| Key | Function |
-|------|------|
-| `B` | Window manager |
-| `V` | App launcher |
-| `N` | Shared window manager |
-| `G` | Capture/release keyboard |
-| `Right-click hold` + WindowItem | Display window in world |
-
-### Config Parameters
+### Share Parameters & Presets
 
 | Param | Description | Range |
-|------|------|------|
+|-------|-------------|-------|
 | `scale` | Resolution scale | 0.1 – 1.0 |
 | `quality` | JPEG quality | 0.1 – 1.0 |
 | `fps` | Max framerate | 5 – 120 |
 | `bitrate` | Max bitrate (kbps) | 0 = unlimited |
 | `diffThreshold` | Pixel change threshold | 0.001 – 1.0 |
 
-### Presets
-
 | Preset | Scale | Quality | FPS | Bitrate |
-|------|-------|---------|-----|---------|
-| `performance` | 0.25 | 0.5 | 60 | 1000kbps |
-| `balanced` | 0.5 | 0.7 | 30 | 2000kbps |
+|--------|-------|---------|-----|---------|
+| `performance` | 0.25 | 0.5 | 60 | 1000 kbps |
+| `balanced` | 0.5 | 0.7 | 30 | 2000 kbps |
 | `quality` | 1.0 | 1.0 | 30 | unlimited |
-| `lowlatency` | 0.35 | 0.6 | 60 | 1500kbps |
+| `lowlatency` | 0.35 | 0.6 | 60 | 1500 kbps |
+
+---
+
+## Iris (Shaders) Compatibility
+
+- Windows display correctly with Iris shaders: when Iris is loaded the mod automatically falls back to the **vanilla entity pipeline**, and window content stays full-brightness (unaffected by shader lighting)
+- Without shaders, the custom pipeline is used and RGSS antialiasing is available (`windowAntialiasing`)
+- Both modes render the window **textured on the front, solid black on the back** — identical behavior
+
+---
+
+## Notes
+
+- **The server must have the mod installed**: in multiplayer, server-side features (`give` / `permission` / `share`) depend on it, otherwise requests are silently dropped
+- Slight aliasing at rounded corners/shadows is normal for JPEG; windows with transparency automatically switch to PNG to preserve alpha
+- Desktop capture (`/wl capture`) requires the system XDG Desktop Portal and a Wayland session
+- Full in-game help: `/wl help`
+
+---
 
 ## Build
 
 ```bash
-# Prerequisites: Java 25, Rust toolchain, Wayland dev libs
+# Prerequisites: Java 25, Rust toolchain, Wayland dev libraries
 apt install libwayland-dev libxkbcommon-dev pkg-config libclang-dev
 
-# 1. Build Rust native library
+# 1. Build the Rust native library (must use release; build.gradle prefers release .so)
 source ~/.cargo/env
 cd native && cargo build --release
-cp target/release/libwaylandcraft.so target/debug/libwaylandcraft.so
 
-# 2. Build Java mod
-cd /workspace/waylandcraft
-./gradlew clean build
+# 2. Build the Java mod
+cd .. && ./gradlew clean build
 
 # Output: build/libs/waylandcraft.jar (~2.0MB)
 ```
 
+> ⚠️ Make sure the packaged native library is `native/target/release/libwaylandcraft.so` (~3.7MB). Accidentally packaging a debug build (176MB with debug symbols) inflates the jar to 39MB.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
-|------|------|
-| Game | Java 25, Fabric Loader 0.19.3, Fabric API 0.151.0 |
+|-------|------------|
+| Game | Java 25, Fabric Loader 0.19.2+, Fabric API 0.147.0+ |
 | Native Bridge | Rust, JNI |
 | Wayland | Smithay, wayland-client, wlr-foreign-toplevel-management |
-| Image | PBO double-buffer, glBlitFramebuffer, JPEG, MemoryUtil |
+| Image | PBO async readback, glBlitFramebuffer, JPEG/PNG, MemoryUtil |
 | Network | Fabric Networking API, custom Payload protocol |
+
+---
 
 ## License
 

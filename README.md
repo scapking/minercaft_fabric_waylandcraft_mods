@@ -7,15 +7,16 @@
   <p align="center"><b>Run Linux desktop apps inside Minecraft</b></p>
   <p align="center">
     <img src="https://img.shields.io/badge/Minecraft-26.1.2-green" />
-    <img src="https://img.shields.io/badge/Fabric-0.19.3-blue" />
+    <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
+    <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
     <img src="https://img.shields.io/badge/Java-25-orange" />
-    <img src="https://img.shields.io/badge/Rust-Native%20Bridge-red" />
+    <img src="https://img.shields.io/badge/Version-v0.2.6-brightgreen" />
   </p>
 </p>
 
 ---
 
-> ⚠️ This project is based on the original [WaylandCraft](https://github.com/evvie-jpg/waylandcraft). Multi-player display features were AI-implemented. **Functionality and security are NOT guaranteed.** Use at your own risk.
+> ⚠️ This project is based on the original [WaylandCraft](https://github.com/evvie-jpg/waylandcraft). Multi-player display and other features were AI-implemented. **Functionality and security are NOT guaranteed.** Use at your own risk.
 
 ---
 
@@ -29,7 +30,9 @@
 
 ## Download
 
-👉 **[Latest Release](https://github.com/almightydb/minercaft_fabric_waylandcraft_mods/releases/latest)** — Download `waylandcraft.jar`
+👉 **[Latest Release (v0.2.6)](https://github.com/scapking/minercaft_fabric_waylandcraft_mods/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+
+> The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 
 ## License
 
