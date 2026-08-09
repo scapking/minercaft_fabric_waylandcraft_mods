@@ -2,7 +2,7 @@
 
 **在 Minecraft 里运行 Linux 桌面应用** — 一个 Fabric mod，将 Wayland compositor 功能集成到 Minecraft 中，让玩家可以在游戏世界中查看和交互 Linux 桌面窗口，并支持多人窗口共享。
 
-> ⚠️ 本项目基于 [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) 原始项目，多人显示等功能由 AI 辅助实现。**功能和安全性不保证稳定，请自行承担使用风险。**
+> ⚠️ **功能和安全性不保证稳定，请自行承担使用风险。**
 
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-26.1.2-green" />
@@ -16,9 +16,7 @@
 
 ## 下载
 
-👉 **[最新 Release（v0.2.6）](https://github.com/scapking/minercaft_fabric_waylandcraft_mods/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
-
-> 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
+👉 **[最新 Release（v0.2.6）](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 ---
 
@@ -223,6 +221,6 @@ MIT License
 
 ## 致谢
 
-- [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) — 原始项目
+- [WaylandCraft](https://github.com/evvie-jpg/waylandcraft) — 前身项目
 - [Smithay](https://github.com/Smithay/smithay) — Wayland compositor 框架
 - [Fabric](https://fabricmc.net/) — Minecraft mod loader

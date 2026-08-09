@@ -16,7 +16,7 @@
 
 ---
 
-> ⚠️ This project is based on the original [WaylandCraft](https://github.com/evvie-jpg/waylandcraft). Multi-player display and other features were AI-implemented. **Functionality and security are NOT guaranteed.** Use at your own risk.
+> ⚠️ **Functionality and security are NOT guaranteed.** Use at your own risk.
 
 ---
 
@@ -30,9 +30,7 @@
 
 ## Download
 
-👉 **[Latest Release (v0.2.6)](https://github.com/scapking/minercaft_fabric_waylandcraft_mods/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
-
-> The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
+👉 **[Latest Release (v0.2.6)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
 ## License
 
