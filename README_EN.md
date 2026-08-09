@@ -96,10 +96,11 @@
 
 | Command | Function |
 |---------|----------|
+| `/wl list` | List launchable apps (default) |
 | `/wl list windows` | List windows in the compositor |
 | `/wl list apps` | List launchable apps |
 | `/wl list desktop` | List capturable desktop windows |
-| `/wl launch <app>` | Launch an app |
+| `/wl launch <app>` | Launch an app (by name or exact alias; use the full alias to disambiguate same-prefix apps, e.g. `visual_studio_code`) |
 | `/wl capture` | Open the Portal picker to capture a desktop window |
 | `/wl give <handle>` | Turn a window into an item in your inventory |
 | `/wl take <handle>` | Take the window item back |

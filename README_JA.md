@@ -96,10 +96,11 @@
 
 | コマンド | 機能 |
 |----------|------|
+| `/wl list` | 起動可能なアプリ一覧（デフォルト） |
 | `/wl list windows` | compositor 内のウィンドウ一覧 |
 | `/wl list apps` | 起動可能なアプリ一覧 |
 | `/wl list desktop` | キャプチャ可能なデスクトップウィンドウ一覧 |
-| `/wl launch <app>` | アプリを起動 |
+| `/wl launch <app>` | アプリを起動（名前/完全別名で指定。同プレフィックスのアプリは完全別名で区別、例 `visual_studio_code`） |
 | `/wl capture` | Portal 選択を開いてデスクトップウィンドウをキャプチャ |
 | `/wl give <handle>` | ウィンドウをアイテム化してインベントリへ |
 | `/wl take <handle>` | ウィンドウアイテムを回収 |

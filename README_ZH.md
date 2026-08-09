@@ -96,10 +96,11 @@
 
 | 命令 | 功能 |
 |------|------|
+| `/wl list` | 列出可启动的应用（默认） |
 | `/wl list windows` | 列出 compositor 中的窗口 |
 | `/wl list apps` | 列出可启动的应用 |
 | `/wl list desktop` | 列出可捕获的桌面窗口 |
-| `/wl launch <app>` | 启动应用 |
+| `/wl launch <app>` | 启动应用（支持名称/精确别名；同前缀应用用完整别名区分，如 `visual_studio_code`） |
 | `/wl capture` | 弹出 Portal 选择窗口，捕获桌面窗口 |
 | `/wl give <handle>` | 把窗口变为物品放入背包 |
 | `/wl take <handle>` | 从背包收回窗口物品 |
