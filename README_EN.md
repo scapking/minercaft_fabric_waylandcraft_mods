@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.12-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.13-brightgreen" />
 </p>
 
 ---
 
 ## Download
 
-👉 **[Latest Release (v0.2.12)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+👉 **[Latest Release (v0.2.13)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
 > The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 
@@ -57,7 +57,7 @@
 - Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2** (or matching version)
 - **Java 25**
 - Linux + **Wayland** session (the native library handles window capture; X11 is not supported)
-- **xwayland-satellite is bundled** — X11-only apps get a `DISPLAY` automatically, no manual install needed (still requires a system `Xwayland`, which is present on virtually all Wayland desktops)
+- **xwayland-satellite is bundled** — X11-only apps get a `DISPLAY` automatically, no manual install needed (still requires a system `Xwayland`, which is present on virtually all Wayland desktops). Both **x86_64 and arm64** binaries are shipped inside the jar, so ARM64 hosts (e.g. Raspberry Pi) work out of the box too.
 
 ### Steps
 
@@ -220,10 +220,12 @@ cd native && cargo build --release
 # 2. Build the Java mod
 cd .. && ./gradlew clean build
 
-# Output: build/libs/waylandcraft.jar (~2.0MB)
+# Output: build/libs/waylandcraft.jar (~6.0MB, includes both x86_64 and arm64 xwayland-satellite)
 ```
 
 > ⚠️ Make sure the packaged native library is `native/target/release/libwaylandcraft.so` (~3.7MB). Accidentally packaging a debug build (176MB with debug symbols) inflates the jar to 39MB.
+
+> 📦 The bundled `xwayland-satellite` binaries are built by `native/build-satellite.sh` — run it once for `x86_64` and once for `arm64` (cross-compile with `aarch64-linux-gnu-gcc` + `cargo build --target aarch64-unknown-linux-gnu`), then place both under `native/`.
 
 ---
 

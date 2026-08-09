@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.12-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.13-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release(v0.2.12)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release(v0.2.13)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 > 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 
@@ -57,7 +57,7 @@
 - Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2**（或对应版本）
 - **Java 25**
 - Linux + **Wayland** 会话（原生库负责窗口捕获，X11 下不可用）
-- **xwayland-satellite 已内置** — X11 应用自动获得 `DISPLAY`，无需手动安装（仍需要系统自带 `Xwayland`，几乎所有 Wayland 桌面都包含）
+- **xwayland-satellite 已内置** — X11 应用自动获得 `DISPLAY`，无需手动安装（仍需要系统自带 `Xwayland`，几乎所有 Wayland 桌面都包含）。jar 内同时携带 **x86_64 与 arm64** 两种架构的二进制，ARM64 主机（如树莓派）同样开箱即用。
 
 ### 步骤
 
@@ -220,10 +220,12 @@ cd native && cargo build --release
 # 2. 编译 Java mod
 cd .. && ./gradlew clean build
 
-# 输出：build/libs/waylandcraft.jar (~2.0MB)
+# 输出：build/libs/waylandcraft.jar（约 6.0MB，内置 x86_64 与 arm64 双架构 xwayland-satellite）
 ```
 
 > ⚠️ 发布前务必确认打包的是 `native/target/release/libwaylandcraft.so`（约 3.7MB）。若误打包 debug 构建（176MB 带调试符号），jar 会膨胀到 39MB。
+
+> 📦 内置的 `xwayland-satellite` 二进制由 `native/build-satellite.sh` 构建——分别对 `x86_64` 和 `arm64` 各执行一次（arm64 交叉编译需 `aarch64-linux-gnu-gcc` + `cargo build --target aarch64-unknown-linux-gnu`），然后把两个二进制都放到 `native/` 下。
 
 ---
 

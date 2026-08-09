@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.12-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.13-brightgreen" />
 </p>
 
 ---
 
 ## ダウンロード
 
-👉 **[最新リリース (v0.2.12)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
+👉 **[最新リリース (v0.2.13)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
 
 > 上流リポジトリ（almightydb）の Releases ページは更新が遅れています。最新版は上記リンクから取得してください。
 
@@ -57,7 +57,7 @@
 - Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2**（または対応バージョン）
 - **Java 25**
 - Linux + **Wayland** セッション（ウィンドウキャプチャはネイティブライブラリが担当。X11 は非対応）
-- **xwayland-satellite 同梱** — X11 アプリに `DISPLAY` を自動提供。手動インストール不要（システムの `Xwayland` は必要。ほぼ全ての Wayland デスクトップに含まれます）
+- **xwayland-satellite 同梱** — X11 アプリに `DISPLAY` を自動提供。手動インストール不要（システムの `Xwayland` は必要。ほぼ全ての Wayland デスクトップに含まれます）。jar には **x86_64 と arm64** 両方のバイナリが同梱されており、ARM64 ホスト（Raspberry Pi など）も追加設定なしで動作します。
 
 ### 手順
 
@@ -220,10 +220,12 @@ cd native && cargo build --release
 # 2. Java mod をビルド
 cd .. && ./gradlew clean build
 
-# 出力: build/libs/waylandcraft.jar (~2.0MB)
+# 出力: build/libs/waylandcraft.jar（約 6.0MB、x86_64 と arm64 の xwayland-satellite を同梱）
 ```
 
 > ⚠️ パッケージされるネイティブライブラリが `native/target/release/libwaylandcraft.so`（約 3.7MB）であることを確認してください。debug ビルド（176MB・デバッグシンボル付き）を誤って同梱すると jar が 39MB になります。
+
+> 📦 同梱の `xwayland-satellite` バイナリは `native/build-satellite.sh` でビルドします——`x86_64` と `arm64` のそれぞれで一度ずつ実行し（arm64 クロスコンパイルは `aarch64-linux-gnu-gcc` + `cargo build --target aarch64-unknown-linux-gnu`）、両バイナリを `native/` に配置してください。
 
 ---
 
