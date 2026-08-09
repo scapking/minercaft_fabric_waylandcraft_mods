@@ -101,6 +101,21 @@ jar {
 		natives.add("${target}")
 	}
 
+	// Bundled xwayland-satellite binaries (built by native/build-satellite.sh)
+	// so X11 apps get a DISPLAY without the user installing satellite themselves.
+	def satelliteTargets = [
+		"linux-gnu-x86_64",
+		"linux-gnu-arm64"
+	];
+	for(def target in satelliteTargets) {
+		def f = file("native/xwayland-satellite-${target}")
+		if(!f.exists()) continue;
+
+		with(copySpec {
+			from(f)
+		})
+	}
+
 	if(natives.size() < 1) {
 		ant.fail("native library not built!")
 	}

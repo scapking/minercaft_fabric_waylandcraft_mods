@@ -332,6 +332,11 @@ bind_java_type! {
             sig = (instance: jlong, app_id: JString) -> jboolean,
             fn = exec_app,
         },
+        static extern fn set_satellite_binary {
+            sig = (path: JString),
+            name = "setSatelliteBinary",
+            fn = set_satellite_binary,
+        },
         static extern fn check_app {
             sig = (instance: jlong, app_id: JString) -> JString,
             fn = check_app,
@@ -1839,6 +1844,16 @@ fn render_svg<'local>(
     let height = height as u32;
 
     Ok(crate::svg::render_svg(path, width, height, data).is_some())
+}
+
+fn set_satellite_binary<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    path: JString<'local>,
+) -> Result<(), BridgeError> {
+    let path = path.try_to_string(env)?;
+    crate::satellite::set_binary_path(path);
+    Ok(())
 }
 
 fn exec_app<'local>(

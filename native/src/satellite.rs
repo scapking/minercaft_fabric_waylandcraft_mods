@@ -68,12 +68,26 @@ impl Drop for TmpFileGuard {
     }
 }
 
+// 优先使用 Java 侧从 jar 解压出来的内嵌二进制；未设置时 fallback 到系统 PATH。
+static XWS_BIN_PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 const XWS_BINARY: &str = "xwayland-satellite";
 const TMP_UNIX_DIR: &str = "/tmp";
 const X11_TMP_UNIX_DIR: &str = "/tmp/.X11-unix";
 
+/// 由 JNI 调用，设置内嵌 xwayland-satellite 二进制的绝对路径
+pub fn set_binary_path(path: String) {
+    let _ = XWS_BIN_PATH.set(path);
+}
+
+fn xws_binary() -> &'static str {
+    XWS_BIN_PATH
+        .get()
+        .map(|s| s.as_str())
+        .unwrap_or(XWS_BINARY)
+}
+
 fn test_satellite() -> Result<(), SatelliteError> {
-    let mut command = Command::new(XWS_BINARY);
+    let mut command = Command::new(xws_binary());
     command
         .arg("--test-listenfd-support")
         .stdin(Stdio::null())
@@ -215,7 +229,7 @@ fn try_invoke_xws(
     display: i32,
     listenfds: &[RawFd]
 ) -> Result<Child, SatelliteError> {
-    let mut command = Command::new(XWS_BINARY);
+    let mut command = Command::new(xws_binary());
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())

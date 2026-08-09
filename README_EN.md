@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.10-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.12-brightgreen" />
 </p>
 
 ---
 
 ## Download
 
-👉 **[Latest Release (v0.2.10)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+👉 **[Latest Release (v0.2.12)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
 > The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 
@@ -57,6 +57,7 @@
 - Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2** (or matching version)
 - **Java 25**
 - Linux + **Wayland** session (the native library handles window capture; X11 is not supported)
+- **xwayland-satellite is bundled** — X11-only apps get a `DISPLAY` automatically, no manual install needed (still requires a system `Xwayland`, which is present on virtually all Wayland desktops)
 
 ### Steps
 
@@ -202,7 +203,7 @@ The current version still has a few rough edges that will be improved in future 
 
 1. **Window movement is deliberately constrained** — windows are fixed vertical with the height axis locked while dragging (bottom stays ≥ 0.4 blocks above ground); this is an intentional simplification, and freer placement may be added later.
 2. **Sharing performance is relatively poor** — multi-player window sharing still has significant room for performance improvement.
-3. **Some apps may fail to load** — certain applications with environment issues may not be loadable into Minecraft.
+3. **Some apps may still fail to load** — certain applications with environment issues may not be loadable into Minecraft. X11-only apps now get a bundled `xwayland-satellite` for `DISPLAY`, but a system `Xwayland` binary is still required.
 
 ---
 

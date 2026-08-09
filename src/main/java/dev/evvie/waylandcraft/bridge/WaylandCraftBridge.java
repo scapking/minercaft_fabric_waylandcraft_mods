@@ -71,6 +71,60 @@ public class WaylandCraftBridge {
 			WaylandCraftCommon.LOGGER.info("Native library could not be loaded from jar. Attempting to load from system");
 			System.loadLibrary("waylandcraft");
 		}
+		
+		// 解压内嵌的 xwayland-satellite 二进制（如 jar 里带的话），
+		// 让 X11 应用无需用户手动安装 satellite 也能拿到 DISPLAY。
+		extractSatelliteBinary();
+	}
+	
+	/**
+	 * 从 jar 资源里解压内嵌的 xwayland-satellite 可执行文件到临时目录并 chmod +x，
+	 * 然后通过 JNI 把路径交给 native 层。找不到内嵌二进制（如非 x86_64/arm64 平台）
+	 * 时静默跳过，native 层会 fallback 到系统 PATH。
+	 */
+	private static void extractSatelliteBinary() {
+		try {
+			String resource = satelliteResourcePath();
+			if(resource == null) {
+				WaylandCraftCommon.LOGGER.info("No bundled xwayland-satellite for this platform; will fall back to system PATH");
+				return;
+			}
+			
+			InputStream inputStream = loadResource(resource);
+			if(inputStream == null) {
+				WaylandCraftCommon.LOGGER.warn("Bundled xwayland-satellite resource '{}' not found; will fall back to system PATH", resource);
+				return;
+			}
+			
+			byte[] data = inputStream.readAllBytes();
+			inputStream.close();
+			
+			File temp = File.createTempFile("waylandcraft-", "-xwayland-satellite");
+			temp.deleteOnExit();
+			
+			FileOutputStream outputStream = new FileOutputStream(temp);
+			outputStream.write(data);
+			outputStream.close();
+			
+			if(!temp.setExecutable(true, true)) {
+				WaylandCraftCommon.LOGGER.warn("Failed to chmod +x bundled xwayland-satellite at {}", temp.getAbsolutePath());
+			}
+			
+			setSatelliteBinary(temp.getAbsolutePath());
+			WaylandCraftCommon.LOGGER.info("Bundled xwayland-satellite extracted to {}", temp.getAbsolutePath());
+		} catch (IOException e) {
+			WaylandCraftCommon.LOGGER.warn("Failed to extract bundled xwayland-satellite: {}", e.toString());
+		}
+	}
+	
+	private static String satelliteResourcePath() {
+		String arch;
+		switch(Platform.getArchitecture()) {
+		case X64: arch = "x86_64"; break;
+		case ARM64: arch = "arm64"; break;
+		default: return null;
+		}
+		return "/xwayland-satellite-linux-gnu-" + arch;
 	}
 	
 	private static InputStream loadResource(String path) {
@@ -828,6 +882,9 @@ public class WaylandCraftBridge {
 	private static native boolean renderSVG(String path, int width, int height, long bufferPtr);
 	
 	private static native boolean execApp(long instance, String appId);
+	
+	/** 把 jar 内嵌的 xwayland-satellite 二进制路径交给 native 层（在 native 库加载后调用） */
+	private static native void setSatelliteBinary(String path);
 	
 	private static native String checkApp(long instance, String appId);
 	

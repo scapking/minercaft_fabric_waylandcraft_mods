@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.10-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.12-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release（v0.2.10）](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release(v0.2.12)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 > 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 
@@ -57,6 +57,7 @@
 - Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2**（或对应版本）
 - **Java 25**
 - Linux + **Wayland** 会话（原生库负责窗口捕获，X11 下不可用）
+- **xwayland-satellite 已内置** — X11 应用自动获得 `DISPLAY`，无需手动安装（仍需要系统自带 `Xwayland`，几乎所有 Wayland 桌面都包含）
 
 ### 步骤
 
@@ -202,7 +203,7 @@
 
 1. **窗口移动为受控模式** — 窗口固定垂直放置、拖动时锁定高度轴（保证底部高于地面 0.4 格），这是有意的简化设计；如需更自由的摆放方式可后续扩展。
 2. **共享性能相对差** — 多人窗口共享的性能仍有较大提升空间。
-3. **部分应用可能无法加载** — 某些存在环境问题的应用可能没办法加载到 Minecraft 中。
+3. **部分应用仍可能无法加载** — 某些存在环境问题的应用可能没办法加载到 Minecraft 中。X11 应用现在通过内置的 `xwayland-satellite` 自动获得 `DISPLAY`，但仍要求系统装有 `Xwayland` 二进制。
 
 ---
 

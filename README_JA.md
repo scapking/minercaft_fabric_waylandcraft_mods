@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.10-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.12-brightgreen" />
 </p>
 
 ---
 
 ## ダウンロード
 
-👉 **[最新リリース (v0.2.10)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
+👉 **[最新リリース (v0.2.12)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
 
 > 上流リポジトリ（almightydb）の Releases ページは更新が遅れています。最新版は上記リンクから取得してください。
 
@@ -57,6 +57,7 @@
 - Fabric Loader **0.19.x** + Fabric API **0.147.0+26.1.2**（または対応バージョン）
 - **Java 25**
 - Linux + **Wayland** セッション（ウィンドウキャプチャはネイティブライブラリが担当。X11 は非対応）
+- **xwayland-satellite 同梱** — X11 アプリに `DISPLAY` を自動提供。手動インストール不要（システムの `Xwayland` は必要。ほぼ全ての Wayland デスクトップに含まれます）
 
 ### 手順
 
@@ -202,7 +203,7 @@
 
 1. **ウィンドウ移動は意図的に制約** — ウィンドウは固定垂直で、ドラッグ中は高さ軸が固定されます（下端は地面より 0.4 ブロック以上上）。これは意図的な簡素化であり、より自由な配置は今後拡張予定です。
 2. **共有パフォーマンスが比較的低い** — マルチプレイのウィンドウ共有にはまだパフォーマンス改善の余地が大きいです。
-3. **一部のアプリが読み込めない場合があります** — 環境に問題のある一部のアプリは Minecraft 内に読み込めない可能性があります。
+3. **一部のアプリが読み込めない場合があります** — 環境に問題のある一部のアプリは Minecraft 内に読み込めない可能性があります。X11 アプリは同梱の `xwayland-satellite` により `DISPLAY` を自動取得しますが、システムの `Xwayland` バイナリは依然として必要です。
 
 ---
 
