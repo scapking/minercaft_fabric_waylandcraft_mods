@@ -242,6 +242,17 @@ public class WaylandCraftCommand {
 						.executes(WaylandCraftCommand::posWindow)
 					)
 				)
+				.then(ClientCommands.literal("move")
+					.then(ClientCommands.argument("handle", StringArgumentType.word())
+						.then(ClientCommands.argument("x", StringArgumentType.word())
+							.then(ClientCommands.argument("y", StringArgumentType.word())
+								.then(ClientCommands.argument("z", StringArgumentType.word())
+									.executes(WaylandCraftCommand::moveWindow)
+								)
+							)
+						)
+					)
+				)
 				.then(ClientCommands.literal("template")
 					.then(ClientCommands.literal("save")
 						.then(ClientCommands.argument("name", StringArgumentType.word())
@@ -309,6 +320,7 @@ public class WaylandCraftCommand {
 		source.sendFeedback(Component.literal(" §e/wl share start|stop|quality|preset|config|reset|info|resolution|stats <handle> [...]§7 — 共享管理§r"));
 		source.sendFeedback(Component.literal(" §e/wl permission list|default|allow|deny|remove§7 — 共享权限管理§r"));
 		source.sendFeedback(Component.literal(" §e/wl pos <handle>§7 — 查看窗口位置/朝向/缩放/分辨率§r"));
+		source.sendFeedback(Component.literal(" §e/wl move <handle> <x> <y> <z>§7 — 设置窗口坐标（绝对如 §e100.5§7 或相对如 §e~0.5§7 / §e~§7）§r"));
 		source.sendFeedback(Component.literal(" §e/wl template save|savep <name>§7 — 保存当前区块窗口布局（临时/永久）§r"));
 		source.sendFeedback(Component.literal(" §e/wl template apply|applyp <name>§7 — 恢复/复现布局§r"));
 		source.sendFeedback(Component.literal(" §e/wl template list|remove|removep§7 — 管理模板§r"));
@@ -1060,6 +1072,74 @@ public class WaylandCraftCommand {
 
 	private static String fmt(double v) {
 		return String.format(java.util.Locale.ROOT, "%.2f", v);
+	}
+
+	/**
+	 * 设置窗口世界坐标（pivot，即窗口中心）
+	 * /wl move <handle> <x> <y> <z>
+	 * 每个轴支持两种写法：
+	 *   - 绝对坐标：100.5  →  直接设为该值
+	 *   - 相对偏移：~0.5 / ~-1 / ~  →  在当前值上增减（~ 表示 +0）
+	 */
+	private static int moveWindow(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+		String xs = StringArgumentType.getString(context, "x");
+		String ys = StringArgumentType.getString(context, "y");
+		String zs = StringArgumentType.getString(context, "z");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		WindowDisplay display = wlc.getDisplay(toplevel);
+		if(display == null) {
+			// 窗口尚未在世界中显示：自动显示并放置
+			display = wlc.getOrCreateDisplay(toplevel);
+		}
+
+		try {
+			double curX = display.pivot.x;
+			double curY = display.pivot.y;
+			double curZ = display.pivot.z;
+
+			boolean[] rel = new boolean[1];
+			double vx = parseAxisValue(xs, curX, rel);
+			double x = rel[0] ? curX + vx : vx;
+			rel[0] = false;
+			double vy = parseAxisValue(ys, curY, rel);
+			double y = rel[0] ? curY + vy : vy;
+			rel[0] = false;
+			double vz = parseAxisValue(zs, curZ, rel);
+			double z = rel[0] ? curZ + vz : vz;
+
+			display.pivot = new net.minecraft.world.phys.Vec3(x, y, z);
+		} catch(NumberFormatException e) {
+			source.sendError(Component.literal("§c✘ 无效坐标§r §7(支持绝对坐标如 §e100.5§7，或相对偏移如 §e~0.5§7 / §e~-1§7 / §e~§7)§r"));
+			return 0;
+		}
+
+		String alias = getWindowAlias(toplevel);
+		source.sendFeedback(Component.literal("§a✔ Moved §f" + alias + "§r → §ex " + fmt(display.pivot.x) + "§7, §ey " + fmt(display.pivot.y) + "§7, §ez " + fmt(display.pivot.z) + "§r"));
+		return 1;
+	}
+
+	/**
+	 * 解析单个坐标轴：绝对数字或 ~ 相对偏移
+	 */
+	private static double parseAxisValue(String s, double current, boolean[] isRelative) throws NumberFormatException {
+		if(s.startsWith("~")) {
+			isRelative[0] = true;
+			String numPart = s.substring(1).trim();
+			if(numPart.isEmpty()) return 0;
+			return Double.parseDouble(numPart);
+		}
+		return Double.parseDouble(s);
 	}
 
 	/**
