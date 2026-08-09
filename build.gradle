@@ -75,12 +75,20 @@ jar {
 	// Host-specific native library
 	// 优先使用 release 构建（3.7MB），只有 release 不存在时才退回 debug 构建。
 	// debug 构建（176MB）曾导致发布 39MB 大 jar 的问题。
+	// 按 host 架构重命名打进 jar（libwaylandcraft-linux-gnu-<arch>.so），
+	// 不要使用无后缀的 /libwaylandcraft.so —— 否则 arm64 设备会优先加载到
+	// x86_64 的 host 库而崩溃（EM_X86_64 instead of EM_AARCH64）。
 	def nativeFile = file("native/target/release/libwaylandcraft.so")
 	if(!nativeFile.exists()) {
 		nativeFile = file("native/target/debug/libwaylandcraft.so")
 	}
 	if(nativeFile.exists()) {
-		from(nativeFile)
+		def hostArch = System.getProperty("os.arch").toLowerCase()
+		def hostArchName = (hostArch.contains("aarch64") || hostArch.contains("arm64")) ? "arm64" : "x86_64"
+		with(copySpec {
+			from(nativeFile)
+			rename { "libwaylandcraft-linux-gnu-${hostArchName}.so" }
+		})
 		natives.add("host")
 	}
 

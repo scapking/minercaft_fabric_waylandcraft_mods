@@ -135,11 +135,11 @@ public class WaylandCraftBridge {
 	private static InputStream openNativeLibraryFromJar() {
 		InputStream stream = null;
 		
-		/* Attempt to load manually built native library */
-		stream = loadResource("/libwaylandcraft.so");
-		if(stream != null) return stream;
-		
-		/* Attempt to load from release library path */
+		/* Attempt to load the architecture-specific release library first.
+		 * A jar may contain multiple builds (libwaylandcraft-linux-gnu-x86_64.so /
+		 * libwaylandcraft-linux-gnu-arm64.so); the unqualified /libwaylandcraft.so
+		 * is only the build host's library and must NOT be preferred, otherwise
+		 * an arm64 device will try to load an x86_64 build. */
 		String arch;
 		switch(Platform.getArchitecture()) {
 		case X64: arch = "x86_64"; break;
@@ -152,6 +152,10 @@ public class WaylandCraftBridge {
 			stream = loadResource("/libwaylandcraft-" + platform + ".so");
 			if(stream != null) return stream;
 		}
+		
+		/* Attempt to load manually built native library (fallback) */
+		stream = loadResource("/libwaylandcraft.so");
+		if(stream != null) return stream;
 		
 		return null;
 	}
