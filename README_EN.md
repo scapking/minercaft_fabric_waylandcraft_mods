@@ -191,6 +191,7 @@ The current version still has a few rough edges that will be improved in future 
 
 1. **Window movement is inconvenient** — moving/resizing windows in the world is not yet smooth or ergonomic enough.
 2. **Sharing performance is relatively poor** — multi-player window sharing still has significant room for performance improvement.
+3. **Some apps may fail to load** — certain applications with environment issues may not be loadable into Minecraft.
 
 ---
 
