@@ -60,6 +60,10 @@ public class WindowShareManager {
 	private long adaptiveFrameBytes = 0; // 当前评估周期内的总字节
 	private boolean lastFrameOverLimit = false;
 	
+	// === 心跳帧 ===
+	// 无内容变化时，最多间隔这么久强制发一帧，保证接收端纹理持续刷新
+	private static final long HEARTBEAT_INTERVAL_MS = 2000;
+	
 	public WindowShareManager(WaylandCraft clientMod) {
 		this.clientMod = clientMod;
 		this.serverMod = null;
@@ -118,6 +122,7 @@ public class WindowShareManager {
 		
 		diffUpdateManager.clearWindow(windowHandle);
 		frameRateController.reset(windowHandle);
+		ImageCapture.clearDiffCache(windowHandle);
 		
 		LOGGER.info("Stopped sharing window 0x{}", Long.toHexString(windowHandle));
 		return true;
@@ -163,12 +168,20 @@ public class WindowShareManager {
 		if(effectiveConfig.diffUpdate) {
 			byte[] rawFrame = ImageCapture.captureFromFramebufferRaw(toplevel.framebuffer, effectiveScale);
 			if(rawFrame != null) {
-				if(!ImageCapture.hasSignificantChange(rawFrame, effectiveConfig.diffThreshold)) {
+				if(!ImageCapture.hasSignificantChange(state.windowHandle, rawFrame, effectiveConfig.diffThreshold)) {
 					// 无显著变化，跳过本帧
 					state.skippedFrames++;
-					return;
+					// 心跳帧：长时间无变化时也强制发一帧，避免接收端纹理一直不刷新
+					// （也兜底 diff 基准帧因某种原因失效导致的永久静默）
+					long nowMs = System.currentTimeMillis();
+					if(nowMs - state.lastFrameSentTime > HEARTBEAT_INTERVAL_MS) {
+						state.skippedFrames = 0;
+					} else {
+						return;
+					}
 				}
 			}
+			// rawFrame == null（捕获失败）：不跳过，继续走完整 JPEG 路径发送
 		}
 		
 		// === 捕获（使用优化的PBO+GPU缩放+直接编码路径） ===
@@ -210,9 +223,14 @@ public class WindowShareManager {
 		byte[] processedData = diffUpdateManager.processFrame(state.windowHandle, imageData);
 		if(processedData == null) return;
 		
-		// 使用原始窗口尺寸（非缩放），接收端根据这个尺寸计算世界大小
-		int originalW = toplevel.geometry.width();
-		int originalH = toplevel.geometry.height();
+		// 使用 framebuffer 原始尺寸（非缩放），接收端根据这个尺寸计算世界大小。
+		// 注意：必须是 framebuffer 尺寸（含 xoff/yoff 偏移的完整缓冲），
+		// 而不是 geometry 尺寸 —— 否则接收端四边形尺寸与纹理内容对不上，窗口会偏移/缩小。
+		int originalW = toplevel.framebuffer.getWidth();
+		int originalH = toplevel.framebuffer.getHeight();
+		// xoff/yoff 随帧传递，接收端用于 bufOffset 对齐（与本地 WindowDisplay.render 一致）
+		int framebufferXOff = toplevel.framebuffer.getXOff();
+		int framebufferYOff = toplevel.framebuffer.getYOff();
 		
 		// 从本地WindowDisplay获取窗口变换
 		double pivotX = 0, pivotY = 0, pivotZ = 0;
@@ -233,7 +251,7 @@ public class WindowShareManager {
 		}
 		
 		SharedWindowImagePayload imagePayload = new SharedWindowImagePayload(
-			state.windowHandle, 0, 0, 0,
+			state.windowHandle, 0, framebufferXOff, framebufferYOff,
 			originalW, originalH,
 			processedData,
 			pivotX, pivotY, pivotZ,
@@ -245,6 +263,7 @@ public class WindowShareManager {
 		// 更新统计
 		bytesSentThisSecond += processedData.length;
 		state.lastUpdateTime = System.currentTimeMillis();
+		state.lastFrameSentTime = state.lastUpdateTime;
 		state.frameCount++;
 		state.totalBytes += processedData.length;
 		state.currentFps = frameRateController.getCurrentFps(state.windowHandle);
@@ -288,6 +307,7 @@ public class WindowShareManager {
 		frameRateController.clear();
 		adaptiveScaleMultiplier = 1.0f;
 		bytesSentThisSecond = 0;
+		ImageCapture.clearAllDiffCaches();
 		LOGGER.info("Cleared all share states due to disconnect");
 	}
 	
@@ -368,6 +388,7 @@ public class WindowShareManager {
 		public final long startTime;
 		
 		public long lastUpdateTime = 0;
+		public long lastFrameSentTime = 0;   // 最近一次实际发送帧的时间（心跳帧用）
 		public long frameCount = 0;
 		public long totalBytes = 0;
 		public long skippedFrames = 0;      // diff检测跳过的帧数

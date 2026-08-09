@@ -126,14 +126,22 @@ public class SharedWindowClientHandler {
 			return;
 		}
 		
-		LOGGER.info("[CLIENT] received image for window 0x{}: {} bytes, {}x{}",
-			Long.toHexString(payload.windowHandle()), payload.imageData().length, payload.width(), payload.height());
+		// 节流：渲染线程上 JPEG 解码较慢，网络帧率（~20fps）会直接把主线程卡死，
+		// 表现为"远程画面不更新"。限制到 ~12fps 处理。
+		long now = System.currentTimeMillis();
+		if(now - info.lastImageProcessTime < 80) {
+			return;
+		}
+		info.lastImageProcessTime = now;
 		
 		// 更新图像数据
 		info.updateImage(payload.imageData(), payload.width(), payload.height());
 		
-		// 同步更新窗口尺寸（payload.width/height是原始窗口尺寸，用于世界空间渲染）
+		// 同步更新窗口尺寸（payload.width/height是原始framebuffer尺寸，用于世界空间渲染）
 		info.updateState(info.x(), info.y(), payload.width(), payload.height(), info.visible());
+		
+		// 记录 framebuffer 内容偏移（xoff/yoff），用于接收端 bufOffset 对齐
+		info.setBufferOffset(payload.x(), payload.y());
 		
 		// 更新窗口变换（pivot/normal/down）
 		info.updateTransform(
@@ -212,6 +220,7 @@ public class SharedWindowClientHandler {
 			if(display.getWindowHandle() == info.windowHandle()) {
 				display.updatePosition(info.x(), info.y());
 				display.updateSize(info.width(), info.height());
+				display.setBufferOffset(info.bufferXOff(), info.bufferYOff());
 				display.setVisible(info.visible());
 				// 传递窗口变换
 				display.setTransform(info.pivot(), info.normal(), info.down());
@@ -279,8 +288,14 @@ public class SharedWindowClientHandler {
 		private int width, height;
 		private boolean visible = true;
 		
+		// framebuffer 内容偏移（图像 payload 的 x/y 承载），用于接收端 bufOffset 对齐
+		private int bufferXOff;
+		private int bufferYOff;
+		
 		private byte[] imageData;
 		private int imageWidth, imageHeight;
+		
+		private long lastImageProcessTime = 0;   // 图像处理节流时间戳
 		
 		private Vec3 pivot = new Vec3(0, 0, 0);
 		private Vec3 normal = new Vec3(0, 0, 1);
@@ -317,9 +332,16 @@ public class SharedWindowClientHandler {
 		public Vec3 pivot() { return pivot; }
 		public Vec3 normal() { return normal; }
 		public Vec3 down() { return down; }
+		public int bufferXOff() { return bufferXOff; }
+		public int bufferYOff() { return bufferYOff; }
 		
 		public void setPermission(WindowPermission permission) {
 			this.permission = permission;
+		}
+		
+		public void setBufferOffset(int xoff, int yoff) {
+			this.bufferXOff = xoff;
+			this.bufferYOff = yoff;
 		}
 		
 		public void updateState(int x, int y, int width, int height, boolean visible) {
