@@ -90,18 +90,22 @@ fn build_env_list(app_type: &str, wayland_display: &str, display: &str) -> Vec<(
     env_list
 }
 
-/// 为 flatpak 注入 --env= 和 --filesystem= 参数
+/// 为 flatpak 注入 --env= / --socket= / --filesystem= 参数
 ///
 /// 修复说明：
-/// 1. 之前注入 `--filesystem=xdg-run`（flatpak 特殊值）期望暴露宿主 XDG_RUNTIME_DIR，
-///    但实测 flatpak 报"未知文件系统位置 xdg-run"——xdg- 特殊值只支持
-///    desktop/documents/download/music/pictures/publicshare/templates/videos/config/cache/data，
-///    **没有 run**。正确做法是注入宿主 runtime 目录下 wayland socket 的**绝对路径**，
-///    让 flatpak 把该文件 bind 进沙箱同名路径（沙箱内 $XDG_RUNTIME_DIR 也是
-///    /run/user/<uid>，WAYLAND_DISPLAY=wayland-1 时应用正好找 /run/user/<uid>/wayland-1）。
-/// 2. X11 应用还需要能看到 xwayland-satellite 的 X socket（/tmp/.X11-unix/X<dpy>），
+/// 1. v0.2.15 用 `--filesystem=/run/user/1000/wayland-1`（绝对路径）暴露宿主 wayland socket，
+///    但实测 QQ/WeChat 仍报 "Failed to connect to Wayland display: 没有那个文件或目录"——
+///    flatpak 对 runtime 目录（/run/user/<uid>）内路径有预订保护，--filesystem 静默不生效。
+///    **正确做法是 `--socket=wayland`**：flatpak 会读 flatpak 进程自身的 WAYLAND_DISPLAY
+///    （我们在 spawn 时已设为 wayland-1 = WaylandCraft compositor），把宿主
+///    /run/user/<uid>/wayland-1 bind 进沙箱同名路径。这是 flatpak 暴露 wayland socket 的
+///    官方机制，能正确处理 runtime 目录绑定。
+/// 2. 注意：之前 `--nosocket=wayland` 是为了阻止 manifest 默认把 WAYLAND_DISPLAY 指向宿主桌面
+///    （GNOME wayland-0）。现在改为 `--socket=wayland` 后，因为宿主 env WAYLAND_DISPLAY=wayland-1
+///    （而非 wayland-0），flatpak 暴露的正是我们的 compositor socket，应用不会跑到真实桌面。
+/// 3. X11 应用还需要能看到 xwayland-satellite 的 X socket（/tmp/.X11-unix/X<dpy>），
 ///    所以额外暴露 /tmp/.X11-unix 目录。
-/// 3. 找不到 app_id 时 insert_pos 保持 0，会把选项插到最前面（甚至插到 `run` 之前），
+/// 4. 找不到 app_id 时 insert_pos 保持 0，会把选项插到最前面（甚至插到 `run` 之前），
 ///    导致 flatpak 报错。现在找不到就追加到末尾。
 fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &str, runtime_dir: &str) {
     // 找到 app_id 的位置（run 之后第一个非选项参数）
@@ -121,10 +125,9 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &s
 
     // flatpak run 的选项必须放在 run 之后、app_id 之前
     let mut opts = vec![
-        // 禁用 manifest 里的 --socket=wayland：否则 flatpak 会把 WAYLAND_DISPLAY
-        // 指向宿主桌面（如 GNOME 的 wayland-0），应用窗口出现在真实桌面而不是 Minecraft。
-        "--nosocket=wayland".to_string(),
-        // 暴露宿主 wayland socket 的绝对路径（flatpak 无 xdg-run 特殊值，必须用绝对路径）
+        // 暴露宿主 wayland socket（flatpak 读宿主 WAYLAND_DISPLAY=wayland-1 → bind wayland-1 进沙箱）
+        "--socket=wayland".to_string(),
+        // 双保险：绝对路径也暴露一次（部分 flatpak 版本 --socket 行为不同；若支持则同名 bind）
         format!("--filesystem={}/{}", runtime_dir.trim_end_matches('/'), wayland_display),
         format!("--env=WAYLAND_DISPLAY={}", wayland_display),
         "--env=GDK_BACKEND=wayland".to_string(),
