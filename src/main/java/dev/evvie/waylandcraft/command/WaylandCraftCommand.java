@@ -10,11 +10,15 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 
 import dev.evvie.waylandcraft.WaylandCraft;
+import dev.evvie.waylandcraft.WindowDisplay;
 import dev.evvie.waylandcraft.bridge.WLCToplevel;
 import dev.evvie.waylandcraft.capture.PipeWireCaptureManager;
 import dev.evvie.waylandcraft.desktop.DesktopEntry;
+import dev.evvie.waylandcraft.grabs.WindowGrab;
+import dev.evvie.waylandcraft.gui.WindowManagerScreen;
 import dev.evvie.waylandcraft.network.PermissionCommandPayload;
 import dev.evvie.waylandcraft.network.SharedWindowClientHandler;
+import dev.evvie.waylandcraft.settings.WaylandCraftSettings;
 import dev.evvie.waylandcraft.shared.ImageCapture;
 import dev.evvie.waylandcraft.shared.WindowPermission;
 import dev.evvie.waylandcraft.shared.WindowShareManager;
@@ -55,8 +59,38 @@ public class WaylandCraftCommand {
 							.executes(WaylandCraftCommand::createWindow)
 						)
 					)
+					.then(ClientCommands.literal("window")
+						.then(ClientCommands.argument("handle", StringArgumentType.word())
+							.executes(WaylandCraftCommand::giveWindowItem)
+						)
+					)
 					.then(ClientCommands.literal("capture")
 						.executes(WaylandCraftCommand::captureWindow)
+					)
+				)
+				.then(ClientCommands.literal("grab")
+					.then(ClientCommands.argument("handle", StringArgumentType.word())
+						.executes(WaylandCraftCommand::grabWindow)
+					)
+				)
+				.then(ClientCommands.literal("hide")
+					.then(ClientCommands.argument("handle", StringArgumentType.word())
+						.executes(WaylandCraftCommand::hideWindow)
+					)
+				)
+				.then(ClientCommands.literal("pin")
+					.then(ClientCommands.argument("handle", StringArgumentType.word())
+						.executes(WaylandCraftCommand::pinWindow)
+					)
+				)
+				.then(ClientCommands.literal("settings")
+					.then(ClientCommands.literal("list")
+						.executes(WaylandCraftCommand::listSettings)
+					)
+					.then(ClientCommands.argument("key", StringArgumentType.word())
+						.then(ClientCommands.argument("value", StringArgumentType.word())
+							.executes(WaylandCraftCommand::setSetting)
+						)
 					)
 				)
 				.then(ClientCommands.literal("remove")
@@ -437,6 +471,183 @@ public class WaylandCraftCommand {
 	 */
 	private static boolean launchApp(WaylandCraft wlc, DesktopEntry entry) {
 		return wlc.bridge.execApp(entry.appId);
+	}
+
+	/**
+	 * 给指定窗口对应的窗口物品（原 WM 屏 Give Item 按钮）
+	 * /wl give window <handle>
+	 */
+	private static int giveWindowItem(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null || wlc.itemManager == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		wlc.itemManager.giveItem(toplevel);
+		source.sendFeedback(Component.literal("§a✔ Gave window item: §f" + getWindowDisplayName(toplevel) + "§r"));
+		return 1;
+	}
+
+	/**
+	 * 抓取窗口（原 WM 屏 Grab 按钮）：进入抓取模式，移动鼠标即可在世界中拖动窗口
+	 * /wl grab <handle>
+	 */
+	private static int grabWindow(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null || wlc.bridge == null || wlc.pointerGrabs == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		WindowDisplay display = wlc.getOrCreateDisplay(toplevel);
+		wlc.pointerGrabs.startExclusive(new WindowGrab(display, 0));
+
+		// 若当前在窗口管理屏中，退出屏幕进入世界抓取模式
+		Minecraft mc = Minecraft.getInstance();
+		if(mc.screen instanceof WindowManagerScreen) {
+			mc.screen.onClose();
+		}
+
+		source.sendFeedback(Component.literal("§a✔ Grabbed: §f" + getWindowDisplayName(toplevel) + "§r"));
+		source.sendFeedback(Component.literal(" §7移动鼠标拖动窗口，滚轮调整距离§r"));
+		return 1;
+	}
+
+	/**
+	 * 从世界中隐藏窗口显示（原 WM 屏 Hide 按钮）
+	 * /wl hide <handle>
+	 */
+	private static int hideWindow(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		boolean removed = wlc.displays.removeIf((w) -> w.window == toplevel);
+		if(removed) {
+			source.sendFeedback(Component.literal("§a✔ Hidden: §f" + getWindowDisplayName(toplevel) + "§r (窗口管理屏中仍可见)"));
+		} else {
+			source.sendFeedback(Component.literal("§7" + getWindowDisplayName(toplevel) + " §7当前未在世界中显示§r"));
+		}
+		return 1;
+	}
+
+	/**
+	 * 钉住/取消钉住窗口（原 WM 屏 Pin 按钮）
+	 * /wl pin <handle>
+	 */
+	private static int pinWindow(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		boolean pinned;
+		if(wlc.pinnedToplevel != toplevel) {
+			wlc.pinnedToplevel = toplevel;
+			pinned = true;
+		} else {
+			wlc.pinnedToplevel = null;
+			pinned = false;
+		}
+
+		source.sendFeedback(Component.literal((pinned ? "§a✔ Pinned: " : "§eUnpinned: ") + "§f" + getWindowDisplayName(toplevel) + "§r"));
+		return 1;
+	}
+
+	/**
+	 * 列出全部设置（替代设置屏）
+	 * /wl settings list
+	 */
+	private static int listSettings(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		WaylandCraft wlc = WaylandCraft.instance;
+
+		if(wlc == null || wlc.settingsManager == null) {
+			source.sendError(Component.literal("§c✘ Settings not initialized§r"));
+			return 0;
+		}
+
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+		source.sendFeedback(Component.literal("§6 §lWaylandCraft §r§7 Settings§r"));
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+		source.sendFeedback(Component.literal(" §epixelsPerBlock§7 = §e" + wlc.settingsManager.getIntSetting(WaylandCraftSettings.PIXELS_PER_BLOCK) + "§r  §8(int, 窗口世界显示像素密度)§r"));
+		source.sendFeedback(Component.literal(" §ewindowAntialiasing§7 = §e" + wlc.settingsManager.getBooleanSetting(WaylandCraftSettings.WINDOW_ANTIALIASING) + "§r  §8(bool)§r"));
+		source.sendFeedback(Component.literal(" §efocusOnHover§7 = §e" + wlc.settingsManager.getBooleanSetting(WaylandCraftSettings.FOCUS_ON_HOVER) + "§r  §8(bool)§r"));
+		source.sendFeedback(Component.literal("§6▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"));
+		source.sendFeedback(Component.literal(" §7Use §e/wl settings <key> <value>§7 to set§r"));
+		return 1;
+	}
+
+	/**
+	 * 设置单个设置项（替代设置屏）
+	 * /wl settings <key> <value>
+	 */
+	private static int setSetting(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String key = StringArgumentType.getString(context, "key");
+		String value = StringArgumentType.getString(context, "value");
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null || wlc.settingsManager == null) {
+			source.sendError(Component.literal("§c✘ Settings not initialized§r"));
+			return 0;
+		}
+
+		try {
+			switch(key) {
+				case "pixelsPerBlock" -> {
+					wlc.settingsManager.setIntSetting(WaylandCraftSettings.PIXELS_PER_BLOCK, Integer.parseInt(value));
+					source.sendFeedback(Component.literal("§a✔ §epixelsPerBlock§r = §e" + value + "§r"));
+					return 1;
+				}
+				case "windowAntialiasing" -> {
+					wlc.settingsManager.setBooleanSetting(WaylandCraftSettings.WINDOW_ANTIALIASING, Boolean.parseBoolean(value));
+					source.sendFeedback(Component.literal("§a✔ §ewindowAntialiasing§r = §e" + value + "§r"));
+					return 1;
+				}
+				case "focusOnHover" -> {
+					wlc.settingsManager.setBooleanSetting(WaylandCraftSettings.FOCUS_ON_HOVER, Boolean.parseBoolean(value));
+					source.sendFeedback(Component.literal("§a✔ §efocusOnHover§r = §e" + value + "§r"));
+					return 1;
+				}
+				default -> {
+					source.sendError(Component.literal("§c✘ Unknown setting: §f" + key + "§r"));
+					source.sendFeedback(Component.literal(" §7Available: pixelsPerBlock, windowAntialiasing, focusOnHover§r"));
+					return 0;
+				}
+			}
+		} catch(NumberFormatException e) {
+			source.sendError(Component.literal("§c✘ Invalid value: §f" + value + "§r"));
+			return 0;
+		}
 	}
 
 	// ===== 桌面窗口捕获 =====
