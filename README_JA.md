@@ -38,6 +38,17 @@
 
 ---
 
+## デモスクリーンショット
+
+<p align="center">
+  <img src="assets/demo_1.jpg" width="49%" alt="Demo 1" />
+  <img src="assets/demo_2.jpg" width="49%" alt="Demo 2" />
+</p>
+
+> 上記の画像はデモ例です。
+
+---
+
 ## インストール
 
 ### 要件

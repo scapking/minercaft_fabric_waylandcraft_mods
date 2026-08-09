@@ -38,6 +38,17 @@
 
 ---
 
+## Demo Screenshots
+
+<p align="center">
+  <img src="assets/demo_1.jpg" width="49%" alt="Demo 1" />
+  <img src="assets/demo_2.jpg" width="49%" alt="Demo 2" />
+</p>
+
+> The images above are demo examples only.
+
+---
+
 ## Installation
 
 ### Requirements
