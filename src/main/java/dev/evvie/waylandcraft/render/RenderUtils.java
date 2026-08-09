@@ -245,9 +245,14 @@ public class RenderUtils {
 		else renderType = cutout ? WINDOW_CUTOUT : WINDOW_TRANSLUCENT;
 		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new WindowRenderInstance(tl, bl, br, tr, false, flipV));
 		
-		// Back quad
+		// Back quad — 沿法线反向退 0.01 block：
+		// 共面双四边形 + 严格 LESS 深度测试时，背面 quad 会因深度相等被 front 挡住，
+		// 从背面看到的是 front 的镜像画面（与 Iris 单面时同样的问题）。偏移后背面
+		// 从背面视角更近 → 深度测试通过 → NO_COLOR 纯黑正确显示；正面视角则被 front 挡掉。
+		Vec3 n = bl.subtract(tl).cross(br.subtract(tl)).normalize();
+		Vec3 off = n.scale(-0.01);
 		renderType = cutout ? WINDOW_BACKGROUND_CUTOUT : WINDOW_BACKGROUND_TRANSLUCENT;
-		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new WindowRenderInstance(tl, bl, br, tr, true, flipV));
+		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new WindowRenderInstance(tl.add(off), bl.add(off), br.add(off), tr.add(off), true, flipV));
 	}
 	
 	/**
