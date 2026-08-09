@@ -10,7 +10,7 @@
     <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
     <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
     <img src="https://img.shields.io/badge/Java-25-orange" />
-    <img src="https://img.shields.io/badge/Version-v0.2.16-brightgreen" />
+    <img src="https://img.shields.io/badge/Version-v0.2.17-brightgreen" />
   </p>
 </p>
 
@@ -30,7 +30,7 @@
 
 ## Download
 
-👉 **[Latest Release (v0.2.16)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+👉 **[Latest Release (v0.2.17)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
 > The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 

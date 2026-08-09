@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.16-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.17-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release(v0.2.16)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release(v0.2.17)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 > 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 

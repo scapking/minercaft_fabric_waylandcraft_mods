@@ -50,6 +50,7 @@ public class WaylandCraftCommand {
 					.executes(WaylandCraftCommand::showHelp)
 				)
 				.then(ClientCommands.literal("list")
+					.executes(WaylandCraftCommand::listApps)
 					.then(ClientCommands.literal("windows")
 						.executes(WaylandCraftCommand::listWindows)
 					)
@@ -600,21 +601,41 @@ public class WaylandCraftCommand {
 		}
 
 		List<DesktopEntry> entries = wlc.xdgManager.entries();
-		List<DesktopEntry> matches = new ArrayList<>();
 		String appSlug = slugify(appName);
+		String appLower = appName.toLowerCase();
 
+		// 第一阶段：精确匹配（name/appId 完全相等，或 slug 完全相等）。
+		// 修复：之前把"slug 相等"和"slug 包含"混在一起，导致 visual_studio_code 同时匹配
+		// "Visual Studio Code"（相等）和 "Visual Studio Code - URL Handler"（包含）→ 永远歧义。
+		// 现在精确匹配优先：只要存在精确命中，就不再用模糊匹配。
+		List<DesktopEntry> matches = new ArrayList<>();
 		for(DesktopEntry entry : entries) {
-			if(entry.name != null && entry.name.toLowerCase().contains(appName.toLowerCase())) {
+			if(entry.name != null && entry.name.toLowerCase().equals(appLower)) {
 				matches.add(entry);
-			} else if(entry.genericName != null && entry.genericName.toLowerCase().contains(appName.toLowerCase())) {
-				matches.add(entry);
-			} else if(entry.appId.toLowerCase().contains(appName.toLowerCase())) {
+			} else if(entry.appId.toLowerCase().equals(appLower)) {
 				matches.add(entry);
 			} else if(!appSlug.isEmpty()) {
-				// 别名匹配: ccc_hhh -> CCC HHH
 				String entrySlug = slugify(entry.name != null ? entry.name : entry.appId);
-				if(entrySlug.equals(appSlug) || entrySlug.contains(appSlug)) {
+				if(entrySlug.equals(appSlug)) {
 					matches.add(entry);
+				}
+			}
+		}
+
+		// 第二阶段：无精确命中时，才做模糊匹配（name/genericName/appId/slug 包含）
+		if(matches.isEmpty()) {
+			for(DesktopEntry entry : entries) {
+				if(entry.name != null && entry.name.toLowerCase().contains(appLower)) {
+					matches.add(entry);
+				} else if(entry.genericName != null && entry.genericName.toLowerCase().contains(appLower)) {
+					matches.add(entry);
+				} else if(entry.appId.toLowerCase().contains(appLower)) {
+					matches.add(entry);
+				} else if(!appSlug.isEmpty()) {
+					String entrySlug = slugify(entry.name != null ? entry.name : entry.appId);
+					if(entrySlug.contains(appSlug)) {
+						matches.add(entry);
+					}
 				}
 			}
 		}
@@ -625,9 +646,10 @@ public class WaylandCraftCommand {
 		}
 
 		if(matches.size() > 1) {
-			source.sendFeedback(Component.literal("§eMultiple matches:§r"));
+			source.sendFeedback(Component.literal("§eMultiple matches（用精确别名指定）:§r"));
 			for(DesktopEntry entry : matches) {
-				source.sendFeedback(Component.literal("  §b- " + (entry.name != null ? entry.name : entry.appId) + "§r"));
+				String alias = slugify(entry.name != null ? entry.name : entry.appId);
+				source.sendFeedback(Component.literal("  §b- " + (entry.name != null ? entry.name : entry.appId) + "§r §7[§e" + alias + "§7]§r"));
 			}
 			return 0;
 		}
