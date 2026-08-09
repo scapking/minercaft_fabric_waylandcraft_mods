@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::io::Write;
 
@@ -9,6 +10,18 @@ fn log(msg: &str) {
     {
         let _ = writeln!(f, "{}", msg);
     }
+}
+
+/// 打开一个 per-app 日志文件，用于捕获子进程的 stdout/stderr。
+/// 之前用 Stdio::null() 把子进程输出全丢了，应用为什么连不上合成器
+/// 完全看不到。现在 QQ/Chrome/flatpak 的 stderr 都会透传到这里。
+fn app_log_file(cmd: &str) -> std::fs::File {
+    let safe = cmd.rsplit('/').next().unwrap_or(cmd);
+    let path = format!("/tmp/waylandcraft-app-{}.log", safe);
+    std::fs::OpenOptions::new()
+        .create(true).append(true).open(&path)
+        .or_else(|_| std::fs::File::open("/dev/null"))
+        .unwrap_or_else(|_| panic!("cannot open {} nor /dev/null", path))
 }
 
 /// 检测应用类型
@@ -104,6 +117,9 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &s
 
     // flatpak run 的选项必须放在 run 之后、app_id 之前
     let mut opts = vec![
+        // 禁用 manifest 里的 --socket=wayland：否则 flatpak 会把 WAYLAND_DISPLAY
+        // 指向宿主桌面（如 GNOME 的 wayland-0），应用窗口出现在真实桌面而不是 Minecraft。
+        "--nosocket=wayland".to_string(),
         // 暴露宿主 XDG_RUNTIME_DIR，让沙箱内能看到 wayland socket
         "--filesystem=xdg-run".to_string(),
         format!("--env=WAYLAND_DISPLAY={}", wayland_display),
@@ -211,27 +227,47 @@ pub fn spawn(
     };
     
     log(&format!("[spawn] final_cmd={}, final_args={:?}", final_cmd, final_args));
-    
+    // 把最终命令打进游戏日志（stderr 会被 Minecraft 捕获），方便直接看 flatpak 注入是否生效
+    eprintln!("[waylandcraft] spawn: cmd={} args={:?} WAYLAND_DISPLAY={} DISPLAY={:?} XDG_RUNTIME_DIR={}",
+        final_cmd, final_args, wayland_display, display, runtime_dir);
+
+    // 子进程 stdout/stderr -> per-app 日志文件，不再丢进 null
+    let out_file = app_log_file(&final_cmd);
+    let err_file = out_file.try_clone().unwrap_or_else(|_| {
+        std::fs::File::open("/dev/null").unwrap_or_else(|_| panic!("cannot open /dev/null"))
+    });
+
     let mut command = Command::new(&final_cmd);
     command
         .args(&final_args)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(out_file))
+        .stderr(Stdio::from(err_file))
         // 统一给子进程设置正确的 Wayland 环境
         // （flatpak 运行器需要宿主 XDG_RUNTIME_DIR 才能用 --filesystem=xdg-run 构建沙箱）
         .env("WAYLAND_DISPLAY", &wayland_display)
         .env("XDG_RUNTIME_DIR", &runtime_dir)
         .env("DISPLAY", &display);
 
+    // double-fork：子进程立即退出，孙进程被 init 收养，避免僵尸；
+    // 孙进程里直接 exec（不再调用 Command::spawn，避免 fork 后重用 std 的锁/allocator 风险）
     match unsafe { libc::fork() } {
         0 => {
             unsafe { libc::setsid(); }
-            match command.spawn() {
-                Ok(child) => log(&format!("[spawn] child pid={}", child.id())),
-                Err(e) => log(&format!("[spawn] FAILED: '{}': {}", final_cmd, e)),
+            match unsafe { libc::fork() } {
+                0 => {
+                    // 孙进程：exec 替换成目标程序。exec 失败才返回。
+                    let err = command.exec();
+                    log(&format!("[spawn] exec FAILED for '{}': {}", final_cmd, err));
+                    eprintln!("[waylandcraft] exec FAILED for '{}': {}", final_cmd, err);
+                    unsafe { libc::_exit(127); }
+                }
+                -1 => {
+                    log("[spawn] second fork() failed!");
+                    unsafe { libc::_exit(1); }
+                }
+                _ => unsafe { libc::_exit(0); },
             }
-            unsafe { libc::_exit(0); }
         }
         -1 => {
             log("[spawn] fork() failed!");

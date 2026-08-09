@@ -33,9 +33,12 @@ public class X11WindowLister {
 		int XQueryTree(Pointer display, long window, long[] rootReturn, long[] parentReturn, Pointer[] childrenReturn, int[] nchildrenReturn);
 		int XFetchName(Pointer display, long window, String[] nameReturn);
 		int XFree(Pointer data);
-		long XInternAtom(Pointer display, String atomName, boolean onlyIfExists);
+		// NOTE: 参数类型必须是 int 而不是 boolean —— JNA 5.14.0 会把 boolean true 映射成 -1 (0xffffffff)
+		// 而不是 1，导致 X11 请求的 onlyIfExists/delete 字段变成 0xff，X server 返回
+		// "BadValue (X_InternAtom, 0xff)" 并让 Xlib 默认错误处理直接退出进程。
+		long XInternAtom(Pointer display, String atomName, int onlyIfExists);
 		int XGetWindowProperty(Pointer display, long window, long property, long longOffset, long longLength,
-				boolean delete, long reqType, long[] actualTypeReturn, int[] actualFormatReturn,
+				int delete, long reqType, long[] actualTypeReturn, int[] actualFormatReturn,
 				long[] nitemsReturn, long[] bytesAfterReturn, Pointer[] propReturn);
 		int XGetWMName(Pointer display, long window, Pointer[] textPropertyReturn);
 	}
@@ -129,7 +132,7 @@ public class X11WindowLister {
 	}
 
 	private static String fetchStringProperty(Pointer display, long window, String atomName) {
-		long atom = X11.INSTANCE.XInternAtom(display, atomName, true);
+		long atom = X11.INSTANCE.XInternAtom(display, atomName, 1);
 		if(atom == 0) return null;
 
 		long[] type = new long[1];
@@ -138,7 +141,7 @@ public class X11WindowLister {
 		long[] bytesAfter = new long[1];
 		Pointer[] prop = new Pointer[1];
 
-		int status = X11.INSTANCE.XGetWindowProperty(display, window, atom, 0, 1024, false,
+		int status = X11.INSTANCE.XGetWindowProperty(display, window, atom, 0, 1024, 0,
 				XA_STRING, type, format, nitems, bytesAfter, prop);
 		if(status != 0 || prop[0] == null || nitems[0] <= 0) return null;
 
@@ -151,7 +154,7 @@ public class X11WindowLister {
 	}
 
 	private static String fetchCardinalProperty(Pointer display, long window, String atomName) {
-		long atom = X11.INSTANCE.XInternAtom(display, atomName, true);
+		long atom = X11.INSTANCE.XInternAtom(display, atomName, 1);
 		if(atom == 0) return null;
 
 		long[] type = new long[1];
@@ -160,7 +163,7 @@ public class X11WindowLister {
 		long[] bytesAfter = new long[1];
 		Pointer[] prop = new Pointer[1];
 
-		int status = X11.INSTANCE.XGetWindowProperty(display, window, atom, 0, 1, false,
+		int status = X11.INSTANCE.XGetWindowProperty(display, window, atom, 0, 1, 0,
 				XA_CARDINAL, type, format, nitems, bytesAfter, prop);
 		if(status != 0 || prop[0] == null || nitems[0] <= 0) return null;
 
