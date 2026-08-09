@@ -253,6 +253,13 @@ public class WaylandCraftCommand {
 						)
 					)
 				)
+				.then(ClientCommands.literal("rotate")
+					.then(ClientCommands.argument("handle", StringArgumentType.word())
+						.then(ClientCommands.argument("angle", StringArgumentType.word())
+							.executes(WaylandCraftCommand::rotateWindow)
+						)
+					)
+				)
 				.then(ClientCommands.literal("template")
 					.then(ClientCommands.literal("save")
 						.then(ClientCommands.argument("name", StringArgumentType.word())
@@ -321,6 +328,7 @@ public class WaylandCraftCommand {
 		source.sendFeedback(Component.literal(" §e/wl permission list|default|allow|deny|remove§7 — 共享权限管理§r"));
 		source.sendFeedback(Component.literal(" §e/wl pos <handle>§7 — 查看窗口位置/朝向/缩放/分辨率§r"));
 		source.sendFeedback(Component.literal(" §e/wl move <handle> <x> <y> <z>§7 — 设置窗口坐标（绝对如 §e100.5§7 或相对如 §e~0.5§7 / §e~§7）§r"));
+		source.sendFeedback(Component.literal(" §e/wl rotate <handle> <angle>§7 — 设置窗口朝向角（度，绝对如 §e90§7 或相对如 §e~15§7；0=朝+Z, 90=朝+X）§r"));
 		source.sendFeedback(Component.literal(" §e/wl template save|savep <name>§7 — 保存当前区块窗口布局（临时/永久）§r"));
 		source.sendFeedback(Component.literal(" §e/wl template apply|applyp <name>§7 — 恢复/复现布局§r"));
 		source.sendFeedback(Component.literal(" §e/wl template list|remove|removep§7 — 管理模板§r"));
@@ -1065,7 +1073,7 @@ public class WaylandCraftCommand {
 		net.minecraft.world.phys.Vec3 pivot = display.pivot;
 		net.minecraft.world.phys.Vec3 normal = display.normal();
 		source.sendFeedback(Component.literal(" §ex  §7" + fmt(pivot.x) + "   §ey  §7" + fmt(pivot.y) + "   §ez  §7" + fmt(pivot.z) + "§r"));
-		source.sendFeedback(Component.literal(" §e朝向 §7(" + fmt(normal.x) + ", " + fmt(normal.y) + ", " + fmt(normal.z) + ")§r"));
+		source.sendFeedback(Component.literal(" §e朝向 §7(" + fmt(normal.x) + ", " + fmt(normal.y) + ", " + fmt(normal.z) + ")  §e角度 §7" + fmt(display.yawDegrees()) + "°§r"));
 		source.sendFeedback(Component.literal(" §e分辨率 §7" + toplevel.geometry.width() + "x" + toplevel.geometry.height() + "§r  §e缩放 §7" + fmt(display.viewScale) + "§r"));
 		return 1;
 	}
@@ -1140,6 +1148,45 @@ public class WaylandCraftCommand {
 			return Double.parseDouble(numPart);
 		}
 		return Double.parseDouble(s);
+	}
+
+	/**
+	 * 设置窗口朝向角（度，绕世界 Y 轴）
+	 * /wl rotate <handle> <angle>
+	 * angle 支持绝对（90 = 朝 +X）或相对偏移（~15 = 当前 +15°）。
+	 */
+	private static int rotateWindow(CommandContext<FabricClientCommandSource> context) {
+		FabricClientCommandSource source = context.getSource();
+		String handleStr = StringArgumentType.getString(context, "handle");
+		String angleStr = StringArgumentType.getString(context, "angle");
+
+		WLCToplevel toplevel = findToplevelByHandle(source, handleStr);
+		if(toplevel == null) return 0;
+
+		WaylandCraft wlc = WaylandCraft.instance;
+		if(wlc == null || wlc.bridge == null) {
+			source.sendError(Component.literal("§c✘ WaylandCraft not initialized§r"));
+			return 0;
+		}
+
+		WindowDisplay display = wlc.getDisplay(toplevel);
+		if(display == null) {
+			display = wlc.getOrCreateDisplay(toplevel);
+		}
+
+		try {
+			boolean[] rel = new boolean[1];
+			double delta = parseAxisValue(angleStr, 0, rel);
+			double yaw = rel[0] ? display.yawDegrees() + delta : delta;
+			display.rotateToYawDegrees(yaw);
+		} catch(NumberFormatException e) {
+			source.sendError(Component.literal("§c✘ 无效角度§r §7(支持绝对如 §e90§7，或相对偏移如 §e~15§7 / §e~§7)§r"));
+			return 0;
+		}
+
+		String alias = getWindowAlias(toplevel);
+		source.sendFeedback(Component.literal("§a✔ Rotated §f" + alias + "§r → §e" + fmt(display.yawDegrees()) + "°§r §7(0=朝+Z, 90=朝+X)§r"));
+		return 1;
 	}
 
 	/**

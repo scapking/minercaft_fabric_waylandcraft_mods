@@ -202,6 +202,24 @@ public class WindowDisplay {
 	}
 	
 	/**
+	 * 当前朝向角（度，绕世界 Y 轴）。
+	 * 与 rotateBy 的旋转约定一致：0° = 朝 +Z，90° = 朝 +X，180° = 朝 -Z，-90° = 朝 -X。
+	 */
+	public double yawDegrees() {
+		return Math.toDegrees(Math.atan2(normal.x, normal.z));
+	}
+	
+	/**
+	 * 设置朝向角（度，绕世界 Y 轴，保持竖直）。
+	 * @param degrees 0 = 朝 +Z，90 = 朝 +X（正值对应 rotateBy 的正方向）
+	 */
+	public void rotateToYawDegrees(double degrees) {
+		double rad = Math.toRadians(degrees);
+		this.normal = new Vec3(Math.sin(rad), 0, Math.cos(rad));
+		this.down = new Vec3(0, -1, 0);
+	}
+	
+	/**
 	 * 垂直约束：窗口始终竖直放置（法线水平、down=(0,-1,0)），
 	 * 且窗口底部不低于该位置地面之上 GROUND_CLEARANCE 格。
 	 */
