@@ -126,9 +126,10 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &s
     // flatpak run 的选项必须放在 run 之后、app_id 之前
     let mut opts = vec![
         // 暴露宿主 wayland socket（flatpak 读宿主 WAYLAND_DISPLAY=wayland-1 → bind wayland-1 进沙箱）
+        // 注意：不要再手动加 --filesystem=<runtime>/wayland-1，它会和 flatpak 自身的
+        // wayland 导出机制冲突（"is not a symlink to ../../flatpak/wayland-1 as expected"），
+        // 导致沙箱内 wayland-1 时而连不上（QQ 曾 "Failed to connect to Wayland display"）。
         "--socket=wayland".to_string(),
-        // 双保险：绝对路径也暴露一次（部分 flatpak 版本 --socket 行为不同；若支持则同名 bind）
-        format!("--filesystem={}/{}", runtime_dir.trim_end_matches('/'), wayland_display),
         // 禁用 manifest 的 --socket=x11：它会把宿主桌面的 X socket（/tmp/.X11-unix/X0/X1 等）
         // 整个 bind 进沙箱并设 DISPLAY=宿主值，导致 Chrome 等应用窗口出现在宿主桌面而不是 Minecraft。
         "--nosocket=x11".to_string(),
