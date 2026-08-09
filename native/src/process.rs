@@ -45,10 +45,10 @@ fn detect_app_type(cmd: &str, args: &[String]) -> &'static str {
 }
 
 /// 根据类型构建环境变量列表
-fn build_env_list(app_type: &str, wayland_display: &str) -> Vec<(String, String)> {
+fn build_env_list(app_type: &str, wayland_display: &str, display: &str) -> Vec<(String, String)> {
     let mut env_list = vec![
         ("WAYLAND_DISPLAY".to_string(), wayland_display.to_string()),
-        ("DISPLAY".to_string(), "".to_string()),
+        ("DISPLAY".to_string(), display.to_string()),
     ];
     
     match app_type {
@@ -86,7 +86,7 @@ fn build_env_list(app_type: &str, wayland_display: &str) -> Vec<(String, String)
 ///    `--filesystem=xdg-run` 暴露整个宿主 XDG_RUNTIME_DIR。
 /// 2. 之前找不到 app_id 时 insert_pos 保持 0，会把选项插到最前面（甚至插到 `run` 之前），
 ///    导致 flatpak 报错。现在找不到就追加到末尾。
-fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str) {
+fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str, display: &str) {
     // 找到 app_id 的位置（run 之后第一个非选项参数）
     let mut insert_pos = None;
     let mut found_run = false;
@@ -103,7 +103,7 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str) {
     let insert_pos = insert_pos.unwrap_or(args.len());
 
     // flatpak run 的选项必须放在 run 之后、app_id 之前
-    let opts = vec![
+    let mut opts = vec![
         // 暴露宿主 XDG_RUNTIME_DIR，让沙箱内能看到 wayland socket
         "--filesystem=xdg-run".to_string(),
         format!("--env=WAYLAND_DISPLAY={}", wayland_display),
@@ -111,6 +111,10 @@ fn inject_flatpak_env(args: &mut Vec<String>, wayland_display: &str) {
         "--env=QT_QPA_PLATFORM=wayland".to_string(),
         "--env=ELECTRON_OZONE_PLATFORM_HINT=auto".to_string(),
     ];
+    // X11-only flatpak apps need DISPLAY from xwayland-satellite
+    if !display.is_empty() {
+        opts.push(format!("--env=DISPLAY={}", display));
+    }
 
     for (offset, opt) in opts.iter().enumerate() {
         log(&format!("[flatpak] injecting: {}", opt));
@@ -157,7 +161,7 @@ fn shell_quote(s: &str) -> String {
 pub fn spawn(
     cmd: String,
     args: Vec<String>,
-    _env: Vec<(OsString, OsString)>,
+    env: Vec<(OsString, OsString)>,
     wayland_display: String,
     _runtime_dir: String,
 ) -> Result<(), ()> {
@@ -168,7 +172,14 @@ pub fn spawn(
     log(&format!("[spawn] current env: WAYLAND_DISPLAY={:?}, DISPLAY={:?}", 
         std::env::var("WAYLAND_DISPLAY").unwrap_or_default(),
         std::env::var("DISPLAY").unwrap_or_default()));
-    
+
+    // 从 bridge 传入的 env 中提取 DISPLAY（xwayland-satellite 提供时）
+    let display = env.iter()
+        .find(|(k, _)| k == "DISPLAY")
+        .map(|(_, v)| v.to_string_lossy().to_string())
+        .unwrap_or_default();
+    log(&format!("[spawn] DISPLAY from bridge={:?}", display));
+
     let app_type = detect_app_type(&cmd, &args);
     log(&format!("[detect] type={}", app_type));
     
@@ -176,12 +187,12 @@ pub fn spawn(
     
     let (final_cmd, final_args) = if app_type == "flatpak" {
         let mut flatpak_args = args.clone();
-        inject_flatpak_env(&mut flatpak_args, &wayland_display);
+        inject_flatpak_env(&mut flatpak_args, &wayland_display, &display);
         log(&format!("[flatpak] final args={:?}", flatpak_args));
         (cmd.clone(), flatpak_args)
     } else {
         // 非 flatpak: 用 bash -c 包装，强制设置环境变量后 exec
-        let env_list = build_env_list(app_type, &wayland_display);
+        let env_list = build_env_list(app_type, &wayland_display, &display);
         log(&format!("[env] will set: {:?}", env_list));
         
         // 构建 bash 命令: export VAR=val; exec cmd args...
@@ -211,7 +222,7 @@ pub fn spawn(
         // （flatpak 运行器需要宿主 XDG_RUNTIME_DIR 才能用 --filesystem=xdg-run 构建沙箱）
         .env("WAYLAND_DISPLAY", &wayland_display)
         .env("XDG_RUNTIME_DIR", &runtime_dir)
-        .env("DISPLAY", "");
+        .env("DISPLAY", &display);
 
     match unsafe { libc::fork() } {
         0 => {

@@ -2277,6 +2277,7 @@ dependencies = [
  "libc",
  "pipewire",
  "resvg",
+ "rustix 1.1.3",
  "shlex",
  "smithay",
  "thiserror 2.0.18",

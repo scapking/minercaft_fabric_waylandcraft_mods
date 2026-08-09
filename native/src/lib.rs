@@ -2,6 +2,7 @@ use crate::bridge::BridgeState;
 use crate::ddm::WLCDataState;
 use crate::egl::EGLHelper;
 use crate::output::WLCOutput;
+use crate::satellite::SatelliteState;
 use crate::seat::WLCSeatState;
 use crate::xdg_spec::XDGSpecHelper;
 use smithay::{
@@ -52,6 +53,7 @@ mod egl;
 mod java_types;
 mod output;
 mod process;
+mod satellite;
 mod seat;
 mod svg;
 mod utils;
@@ -68,6 +70,7 @@ pub(crate) struct WaylandCraft<'a> {
 pub struct WLCState {
     pub display_handle: DisplayHandle,
     pub socket: OsString,
+    pub satellite: Option<SatelliteState>,
     pub compositor_state: CompositorState,
     pub shm_state: ShmState,
     pub xdg_state: XdgShellState,
@@ -116,6 +119,7 @@ impl WLCState {
         Self {
             display_handle: disp.clone(),
             socket: OsString::new(),
+            satellite: None,
             compositor_state,
             shm_state,
             xdg_state,
@@ -296,6 +300,15 @@ pub(crate) fn wlc_init(
 
     let mut state = WLCState::new(display.handle(), &egl);
     state.socket = socket.socket_name().to_os_string();
+
+    // Start xwayland-satellite to provide an X11 display for X11-only apps
+    match satellite::start_satellite(&state.socket) {
+        Ok(s) => {
+            state.satellite = Some(s);
+            eprintln!("[waylandcraft] xwayland-satellite started: DISPLAY={}", state.satellite.as_ref().unwrap().get_display());
+        }
+        Err(e) => eprintln!("[waylandcraft] Failed to start xwayland-satellite! Error: {e}"),
+    }
 
     let ev_handle = event_loop.handle();
 
