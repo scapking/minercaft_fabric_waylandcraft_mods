@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.7-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.10-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release（v0.2.7）](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release（v0.2.10）](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 > 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 
@@ -109,7 +109,9 @@
 | `/wl unpin <handle>` | 解除钉住 |
 | `/wl close <handle>` | 终止应用进程（关闭窗口） |
 | `/wl resize <handle> <w> <h>` | 调整窗口分辨率 |
-| `/wl pos <handle>` | 查看窗口位置（x/y/z）、朝向、缩放、分辨率 |
+| `/wl pos <handle>` | 查看窗口位置（x/y/z）、朝向角度、缩放、分辨率 |
+| `/wl move <handle> <x> <y> <z>` | 设置窗口坐标（绝对如 `100.5`，或相对偏移如 `~0.5` / `~-1` / `~`） |
+| `/wl rotate <handle> <angle>` | 设置窗口朝向角（度，绕 Y 轴；绝对如 `90`，或相对如 `~15`；`0`=朝+Z, `90`=朝+X） |
 | `/wl template save <name>` | 保存当前区块内所有窗口布局为临时模板（重启失效） |
 | `/wl template savep <name>` | 保存永久模板（app + 位置 + 分辨率，写入磁盘） |
 | `/wl template apply <name>` | 应用临时模板，恢复窗口位置 |
@@ -185,7 +187,8 @@
 
 ## 使用提示
 
-- **窗口固定垂直**：窗口始终竖直放置（不可倾斜），拖动时垂直轴（y）锁定、只能水平移动，且窗口底部不低于该位置地面之上 2 格；`Ctrl+滚轮` 可旋转朝向（保持竖直）
+- **窗口固定垂直**：窗口始终竖直放置（不可倾斜），拖动时垂直轴（y）锁定、只能水平移动，且窗口底部不低于该位置地面之上 **0.4 格**；`Ctrl+滚轮` 可旋转朝向（保持竖直）
+- **精确摆放**：`/wl pos <handle>` 查看当前位置/角度后，可用 `/wl move <handle> <x> <y> <z>` 精确设置坐标（支持 `~` 相对偏移），用 `/wl rotate <handle> <angle>` 精确设置朝向角（度）
 - **服务端必须装 mod**：多人模式下 `give` / `permission` / `share` 等服务端功能依赖服务端安装 mod，否则请求会被静默丢弃
 - 窗口圆角/阴影的轻微锯齿是 JPEG 编码的正常现象；含透明像素的窗口会自动改用 PNG 保留 alpha
 - 桌面捕获（`/wl capture`）依赖系统 XDG Desktop Portal，需要 Wayland 会话
@@ -197,7 +200,7 @@
 
 当前版本仍有以下不完善之处，将在后续版本中持续改进：
 
-1. **窗口移动为受控模式** — 窗口固定垂直放置、拖动时锁定高度轴（保证底部高于地面 2 格），这是有意的简化设计；如需更自由的摆放方式可后续扩展。
+1. **窗口移动为受控模式** — 窗口固定垂直放置、拖动时锁定高度轴（保证底部高于地面 0.4 格），这是有意的简化设计；如需更自由的摆放方式可后续扩展。
 2. **共享性能相对差** — 多人窗口共享的性能仍有较大提升空间。
 3. **部分应用可能无法加载** — 某些存在环境问题的应用可能没办法加载到 Minecraft 中。
 
