@@ -545,19 +545,61 @@ public class ImageCapture {
 	}
 	
 	/**
-	 * 直接从RGBA ByteBuffer编码为JPEG（跳过BufferedImage中间层）
+	 * 直接从RGBA ByteBuffer编码图像（跳过BufferedImage中间层）
+	 * 
+	 * 自动选择编码格式：
+	 * - 全部像素 alpha==255（不透明）→ JPEG（体积小、速度快）
+	 * - 存在透明/半透明像素 → PNG（保留 alpha，避免窗口圆角/阴影变黑边）
+	 *   窗口 framebuffer 含 alpha（圆角、阴影等），JPEG 不支持 alpha 会把
+	 *   透明区域编码成黑色 → 接收端出现"老式黑边框"。
 	 * 
 	 * @param rgbaBuffer RGBA像素数据（bottom-to-top if from PBO）
 	 * @param width 图像宽度
 	 * @param height 图像高度
-	 * @param quality JPEG质量 (0.0-1.0)
+	 * @param quality JPEG质量 (0.0-1.0)，PNG时忽略
 	 * @param flipY 是否翻转Y轴（PBO数据是bottom-to-top）
-	 * @return JPEG压缩数据
+	 * @return 压缩后的图像数据
 	 */
 	@Nullable
 	public static byte[] compressToJpegDirect(ByteBuffer rgbaBuffer, int width, int height, float quality, boolean flipY) {
 		try {
-			// 直接填充RGB int数组（跳过ARGB中间步骤）
+			// 先检查是否有透明像素（决定用 PNG 还是 JPEG）
+			boolean hasAlpha = false;
+			// 采样检查：隔行扫描，减少开销；但为准确起见扫全部 alpha 通道
+			for(int i = 3; i < width * height * 4; i += 4) {
+				if((rgbaBuffer.get(i) & 0xFF) != 0xFF) {
+					hasAlpha = true;
+					break;
+				}
+			}
+			// 回到缓冲区开头（上面的扫描用了绝对 get，不影响 position；保险起见 rewind）
+			rgbaBuffer.rewind();
+			
+			if(hasAlpha) {
+				// PNG：保留 alpha
+				BufferedImage argbImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+				int[] argbPixels = new int[width * height];
+				for(int y = 0; y < height; y++) {
+					int srcY = flipY ? (height - 1 - y) : y;
+					int rowOffset = srcY * width * 4;
+					for(int x = 0; x < width; x++) {
+						int pixelOffset = rowOffset + x * 4;
+						int r = rgbaBuffer.get(pixelOffset) & 0xFF;
+						int g = rgbaBuffer.get(pixelOffset + 1) & 0xFF;
+						int b = rgbaBuffer.get(pixelOffset + 2) & 0xFF;
+						int a = rgbaBuffer.get(pixelOffset + 3) & 0xFF;
+						argbPixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
+					}
+				}
+				argbImage.setRGB(0, 0, width, height, argbPixels, 0, width);
+				rgbaBuffer.rewind();
+				
+				ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+				ImageIO.write(argbImage, "png", outputStream);
+				return outputStream.toByteArray();
+			}
+			
+			// JPEG：无透明，直接 RGB
 			BufferedImage rgbImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 			int[] rgbPixels = new int[width * height];
 			

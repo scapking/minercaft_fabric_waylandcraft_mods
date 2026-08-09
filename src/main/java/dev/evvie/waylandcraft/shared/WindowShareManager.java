@@ -223,9 +223,14 @@ public class WindowShareManager {
 		byte[] processedData = diffUpdateManager.processFrame(state.windowHandle, imageData);
 		if(processedData == null) return;
 		
-		// 使用原始窗口尺寸（非缩放），接收端根据这个尺寸计算世界大小
-		int originalW = toplevel.geometry.width();
-		int originalH = toplevel.geometry.height();
+		// 使用 framebuffer 原始尺寸（非缩放），接收端根据这个尺寸计算世界大小。
+		// 注意：必须是 framebuffer 尺寸（含 xoff/yoff 偏移的完整缓冲），
+		// 而不是 geometry 尺寸 —— 否则接收端四边形尺寸与纹理内容对不上，窗口会偏移/缩小。
+		int originalW = toplevel.framebuffer.getWidth();
+		int originalH = toplevel.framebuffer.getHeight();
+		// xoff/yoff 随帧传递，接收端用于 bufOffset 对齐（与本地 WindowDisplay.render 一致）
+		int framebufferXOff = toplevel.framebuffer.getXOff();
+		int framebufferYOff = toplevel.framebuffer.getYOff();
 		
 		// 从本地WindowDisplay获取窗口变换
 		double pivotX = 0, pivotY = 0, pivotZ = 0;
@@ -246,7 +251,7 @@ public class WindowShareManager {
 		}
 		
 		SharedWindowImagePayload imagePayload = new SharedWindowImagePayload(
-			state.windowHandle, 0, 0, 0,
+			state.windowHandle, 0, framebufferXOff, framebufferYOff,
 			originalW, originalH,
 			processedData,
 			pivotX, pivotY, pivotZ,

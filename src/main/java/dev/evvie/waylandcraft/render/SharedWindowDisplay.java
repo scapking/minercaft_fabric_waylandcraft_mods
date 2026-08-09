@@ -38,6 +38,10 @@ public class SharedWindowDisplay {
 	private int width;
 	private int height;
 	
+	// framebuffer 内容偏移（与本地 WindowDisplay.render 的 xoff/yoff 语义一致）
+	private int xoff;
+	private int yoff;
+	
 	// 权限
 	private WindowPermission permission = WindowPermission.VIEW;
 	
@@ -131,11 +135,19 @@ public class SharedWindowDisplay {
 	}
 	
 	/**
-	 * 更新窗口大小
+	 * 更新窗口大小（原始 framebuffer 尺寸，非缩放）
 	 */
 	public void updateSize(int width, int height) {
 		this.width = width;
 		this.height = height;
+	}
+	
+	/**
+	 * 设置 framebuffer 内容偏移（xoff/yoff），与本地 WindowDisplay.render 的 bufOffset 对齐
+	 */
+	public void setBufferOffset(int xoff, int yoff) {
+		this.xoff = xoff;
+		this.yoff = yoff;
 	}
 	
 	/**
@@ -221,17 +233,20 @@ public class SharedWindowDisplay {
 		Identifier textureLocation = renderer.getTextureLocation_obj(windowHandle);
 		if(textureLocation == null) return;
 		
-		// 始终使用纹理实际尺寸（而非原始窗口尺寸），避免缩放导致的黑边
-		int[] dims = renderer.getTextureDimensions(windowHandle);
-		int renderWidth, renderHeight;
-		if(dims != null && dims[0] > 0 && dims[1] > 0) {
-			renderWidth = dims[0];
-			renderHeight = dims[1];
-		} else if(this.width > 0 && this.height > 0) {
-			renderWidth = this.width;
-			renderHeight = this.height;
-		} else {
-			return;
+		// 始终使用原始 framebuffer 尺寸（与本地 WindowDisplay 一致），
+		// 纹理（可能被发送端缩放）通过 UV 0..1 拉伸到整个四边形。
+		// 若用纹理尺寸渲染，发送端 scale<1 时窗口会变小 → 与本地不一致。
+		int renderWidth = this.width;
+		int renderHeight = this.height;
+		if(renderWidth <= 0 || renderHeight <= 0) {
+			// 兜底：纹理尺寸
+			int[] dims = renderer.getTextureDimensions(windowHandle);
+			if(dims != null && dims[0] > 0 && dims[1] > 0) {
+				renderWidth = dims[0];
+				renderHeight = dims[1];
+			} else {
+				return;
+			}
 		}
 		
 		// 与WindowDisplay.render()完全一致的向量计算
@@ -241,11 +256,13 @@ public class SharedWindowDisplay {
 		Vec3 cameraPos = ctx.levelState().cameraRenderState.pos;
 		Vec3 originRel = origin().subtract(cameraPos);
 
-		// 远程纹理没有xoff/yoff（不需要bufOffset）
-		Vec3 tl = new Vec3(0, 0, 0);
-		Vec3 bl = localY.scale(renderHeight);
+		// framebuffer 内容偏移（xoff/yoff），与本地 WindowDisplay.render 的 bufOffset 一致
+		Vec3 bufOffset = localX.scale(-xoff).add(localY.scale(-yoff));
+
+		Vec3 tl = bufOffset;
+		Vec3 bl = bufOffset.add(localY.scale(renderHeight));
 		Vec3 br = bl.add(localX.scale(renderWidth));
-		Vec3 tr = localX.scale(renderWidth);
+		Vec3 tr = tl.add(localX.scale(renderWidth));
 		
 		PoseStack poseStack = ctx.poseStack();
 		poseStack.pushPose();
