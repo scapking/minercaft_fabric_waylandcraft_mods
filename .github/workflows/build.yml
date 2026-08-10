@@ -164,11 +164,11 @@ jobs:
         PREFIX=bionic-prefix
         mkdir -p $PREFIX/lib/pkgconfig $PREFIX/include/xkbcommon \
                  $PREFIX/include/pipewire-0.3 $PREFIX/include/spa-0.2
-        # libxkbcommon: library + headers
-        cp -P libxkbcommon/build/libxkbcommon.so.0* $PREFIX/lib/
+        # libxkbcommon: library + headers (cross-built soname is libxkbcommon.so)
+        cp -P libxkbcommon/build/libxkbcommon.so* $PREFIX/lib/
         cp -r libxkbcommon/include/xkbcommon/* $PREFIX/include/xkbcommon/
         # pipewire: library + headers (+ extensions, protocol dirs)
-        cp -P pipewire/build/src/pipewire/libpipewire-0.3.so.0* $PREFIX/lib/
+        cp -P pipewire/build/src/pipewire/libpipewire-0.3.so* $PREFIX/lib/
         cp -r pipewire/src/pipewire $PREFIX/include/pipewire-0.3/
         # spa headers
         cp -r pipewire/spa/include/spa $PREFIX/include/spa-0.2/
@@ -251,12 +251,23 @@ jobs:
         mkdir -p native-libs/deps
         cp native/target/${{ matrix.target.rust_target }}/release/libwaylandcraft.so \
           native-libs/libwaylandcraft-android-${{ matrix.target.name }}.so
-        cp -P bionic/lib/libxkbcommon.so.0* native-libs/deps/
-        cp -P bionic/lib/libpipewire-0.3.so.0* native-libs/deps/
+        # Android cross-builds may not produce versioned symlinks (libxkbcommon.so
+        # instead of libxkbcommon.so.0); copy whatever exists and create the .so.0
+        # alias when missing so DT_NEEDED resolution works either way.
+        cp -P bionic/lib/libxkbcommon.so* native-libs/deps/ 2>/dev/null || true
+        cp -P bionic/lib/libpipewire-0.3.so* native-libs/deps/ 2>/dev/null || true
+        ls native-libs/deps/
+        if [ ! -e native-libs/deps/libxkbcommon.so.0 ] && [ -e native-libs/deps/libxkbcommon.so ]; then
+          ln -s libxkbcommon.so native-libs/deps/libxkbcommon.so.0
+        fi
+        if [ ! -e native-libs/deps/libpipewire-0.3.so.0 ] && [ -e native-libs/deps/libpipewire-0.3.so ]; then
+          ln -s libpipewire-0.3.so native-libs/deps/libpipewire-0.3.so.0
+        fi
         printf 'libxkbcommon.so.0\nlibpipewire-0.3.so.0\n' > native-libs/deps/deps.list
         echo "--- native-libs ---"
         ls -la native-libs/ native-libs/deps/
         file native-libs/*.so native-libs/deps/*.so || true
+        readelf -d native-libs/libwaylandcraft-android-${{ matrix.target.name }}.so 2>/dev/null | grep -i needed || true
     - name: Upload artifact
       uses: actions/upload-artifact@v7
       with:
