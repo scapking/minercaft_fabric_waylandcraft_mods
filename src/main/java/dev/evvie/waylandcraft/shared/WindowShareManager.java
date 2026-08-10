@@ -296,23 +296,23 @@ public class WindowShareManager {
 	/**
 	 * 捕获并编码一帧 JPEG，带发送端大小保护（自动降级）。
 	 *
+	 * 底线约束：**只允许降低内容画质（JPEG 压缩质量）与丢帧，绝不允许降低 UI 大小**。
+	 * scale（像素尺寸）永远保持 effectiveScale 不变 —— 缩放会改变 UI 尺寸/布局，违反底线。
+	 *
 	 * 流程：
 	 * 1. 按 (effectiveScale, config.quality) 正常捕获+编码；
 	 * 2. 编码结果 &gt; config.maxJpegBytes 时自动降级重编码：
-	 *    - 第 1 轮降 quality（沿 jpegQualityLadder 取严格更小的下一档，如 1.0 → 0.85 → 0.7），
-	 *      quality 已到阶梯底时改降 scale 兜底；
-	 *    - 第 2 轮及以后 quality 与 scale 各降一档（scale 沿 jpegScaleLadder，如 1.0 → 0.75 → 0.5），
-	 *      最大化命中上限的几率；
-	 *    - 每轮降级 LOGGER.warn 记录窗口 handle、原/降后大小、当前 quality/scale；
+	 *    - 只降 quality（沿 jpegQualityLadder 取严格更小的下一档，如 1.0 → 0.85 → 0.7），
+	 *      scale 恒等于 effectiveScale，绝不变化；
+	 *    - 每轮降级 LOGGER.warn 记录窗口 handle、原/降后大小、当前 quality；
 	 *    - 最多 config.maxDegradeRounds 轮（默认 2），有界，不会死循环；
-	 * 3. 最后仍超限 → 丢弃该帧并 LOGGER.error 告警（避免超过协议包上限导致崩溃）。
+	 * 3. quality 已到阶梯底仍超限 → 丢弃该帧并 LOGGER.error 告警（丢帧允许，避免超过协议包上限）。
 	 *
 	 * 编码耗时统计：整帧 capture+encode（含可能的降级重编码）&gt; 20ms 时 LOGGER.debug 输出。
 	 *
-	 * 说明：降级重编码走与正常路径相同的 captureFromFramebuffer（scale 变化需重新 GPU 缩放、
-	 * quality 变化同样重编码），PBO/FBO 按窗口隔离，多窗口无串扰；
-	 * 同尺寸重捕获时 PBO 映射到的是本窗口上一帧数据（内容一致，无花屏）。
-	 * diff/raw 捕获路径（captureFromFramebufferRaw）不受影响。
+	 * 说明：降级重编码走与正常路径相同的 captureFromFramebuffer（quality 变化同样重编码），
+	 * PBO/FBO 按窗口隔离，多窗口无串扰；同尺寸重捕获时 PBO 映射到的是本窗口上一帧数据
+	 * （内容一致，无花屏）。diff/raw 捕获路径（captureFromFramebufferRaw）不受影响。
 	 *
 	 * @return 不超过大小上限的 JPEG 数据；捕获失败或超限丢弃时返回 null
 	 */
@@ -321,6 +321,7 @@ public class WindowShareManager {
 			ImageCapture.CaptureConfig config, float effectiveScale) {
 		long frameStart = System.nanoTime();
 		
+		// scale 是底线：任何降级都不允许改变它（UI 大小必须与共享端一致）
 		float scale = effectiveScale;
 		float quality = config.quality;
 		byte[] imageData = ImageCapture.captureFromFramebuffer(
@@ -333,22 +334,21 @@ public class WindowShareManager {
 			return null;
 		}
 		
-		// === JPEG 大小保护：超限自动降级重编码（maxJpegBytes <= 0 表示不限制，直发） ===
+		// === JPEG 大小保护：超限只降 quality 重编码（maxJpegBytes <= 0 表示不限制，直发） ===
 		int degradeRounds = 0;
 		if(config.maxJpegBytes > 0) {
 			while(imageData.length > config.maxJpegBytes && degradeRounds < config.maxDegradeRounds) {
 				long beforeSize = imageData.length;
-				float[] nextParams = nextDegradeParams(config, scale, quality, degradeRounds);
-				if(nextParams == null) {
-					break; // 无可降级项，避免死循环，直接走最终超限判定
+				float nextQuality = nextLadderValue(config.jpegQualityLadder, quality);
+				if(nextQuality < 0) {
+					break; // quality 已到阶梯底，无可降 → 直接走最终超限判定（丢帧）
 				}
-				scale = nextParams[0];
-				quality = nextParams[1];
+				quality = nextQuality;
 				
 				byte[] reencoded = ImageCapture.captureFromFramebuffer(
 					state.windowHandle,
 					toplevel.framebuffer,
-					scale,
+					scale,      // 保持不变：UI 大小是底线
 					quality
 				);
 				if(reencoded == null) {
@@ -356,17 +356,17 @@ public class WindowShareManager {
 				}
 				
 				degradeRounds++;
-				LOGGER.warn("Window 0x{} JPEG over size limit ({} bytes): {} -> {} bytes, degrade round {}: quality={} scale={}",
+				LOGGER.warn("Window 0x{} JPEG over size limit ({} bytes): {} -> {} bytes, degrade round {}: quality={} scale={} (scale frozen)",
 					Long.toHexString(state.windowHandle), config.maxJpegBytes,
 					beforeSize, reencoded.length, degradeRounds,
 					String.format("%.2f", quality), String.format("%.2f", scale));
 				imageData = reencoded;
 			}
 			
-			// === 最终判定：仍超限 → 丢弃本帧并告警 ===
+			// === 最终判定：quality 已降到底仍超限 → 丢弃本帧并告警（丢帧允许） ===
 			if(imageData.length > config.maxJpegBytes) {
 				state.sizeDroppedFrames++;
-				LOGGER.error("Window 0x{} JPEG still over size limit after {} degrade round(s): {} bytes > {} bytes, DROPPING frame",
+				LOGGER.error("Window 0x{} JPEG still over size limit after {} degrade round(s): {} bytes > {} bytes, DROPPING frame (quality floor reached, scale preserved)",
 					Long.toHexString(state.windowHandle), degradeRounds,
 					imageData.length, config.maxJpegBytes);
 				return null;
@@ -386,42 +386,6 @@ public class WindowShareManager {
 		}
 		
 		return imageData;
-	}
-	
-	/**
-	 * 计算下一轮降级参数（float[2] = {scale, quality}）。
-	 * 降级顺序（阶梯取严格小于当前值的下一档）：
-	 * - 第 1 轮：只降 quality（1.0 → 0.85 → 0.7）；quality 已到阶梯底时改降 scale 兜底；
-	 * - 第 2 轮及以后：quality 与 scale 各降一档（最后一轮机会，最大化命中上限的几率），
-	 *   某一维已到阶梯底时用另一维兜底。
-	 * 两维都无可降级项时返回 null（调用方直接丢弃该帧）。
-	 */
-	@Nullable
-	private static float[] nextDegradeParams(ImageCapture.CaptureConfig config, float scale, float quality, int degradeRound) {
-		float nextQuality = nextLadderValue(config.jpegQualityLadder, quality);
-		float nextScale = nextLadderValue(config.jpegScaleLadder, scale);
-		
-		if(degradeRound == 0) {
-			// 第 1 轮：先降 quality；quality 无可降 → 降 scale 兜底
-			if(nextQuality >= 0) {
-				return new float[]{scale, nextQuality};
-			}
-			if(nextScale >= 0) {
-				return new float[]{nextScale, quality};
-			}
-			return null;
-		}
-		// 第 2 轮及以后：quality + scale 各降一档（缺失维度用另一维兜底）
-		if(nextQuality >= 0 && nextScale >= 0) {
-			return new float[]{nextScale, nextQuality};
-		}
-		if(nextScale >= 0) {
-			return new float[]{nextScale, quality};
-		}
-		if(nextQuality >= 0) {
-			return new float[]{scale, nextQuality};
-		}
-		return null;
 	}
 	
 	/**
