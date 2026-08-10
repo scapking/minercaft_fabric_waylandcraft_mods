@@ -7,11 +7,13 @@ version = project.mod_version
 group = project.maven_group
 
 // Optional -PwlArch=arm64|x86_64 selects a single-arch jar
-// (used by the CI matrix). Without it the jar bundles both arches.
+// Optional -PwlPlatform=linux-gnu|android selects the native platform
+// (used by the CI matrix). Without them the jar bundles both linux arches.
 def wlArch = providers.gradleProperty('wlArch').getOrElse('')
+def wlPlatform = providers.gradleProperty('wlPlatform').getOrElse('')
 
 base {
-	archivesName = wlArch ? "${project.archives_base_name}-linux-${wlArch}" : project.archives_base_name
+	archivesName = wlArch ? "${project.archives_base_name}-${wlPlatform == 'android' ? 'android' : 'linux'}-${wlArch}" : project.archives_base_name
 }
 
 repositories {
@@ -101,7 +103,7 @@ jar {
 
 	// Packaging of libraries in directory `native-libs`
 	// Used by the actions runner for releases
-	def targets = wlArch ? ["linux-gnu-${wlArch}"] : [
+	def targets = wlArch ? ["${(wlPlatform ?: 'linux-gnu')}-${wlArch}"] : [
 		"linux-gnu-x86_64",
 		"linux-gnu-arm64"
 	];

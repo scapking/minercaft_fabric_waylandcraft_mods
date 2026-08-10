@@ -56,9 +56,9 @@ jobs:
           native-libs/libwaylandcraft-${{ matrix.platform.name }}.so
     - name: Collect runtime shared library dependencies
       # Copy the non-glibc .so dependencies (libxkbcommon/libpipewire/...) next to
-      # the native lib. Stripped runtimes such as the OnyxLauncher Android JRE have
-      # glibc but no libxkbcommon.so.0 / libpipewire-0.3.so.0; bundling them lets
-      # the Java side preload them before loading libwaylandcraft.so.
+      # the native lib. Stripped runtimes such as the OnyxLauncher Android JRE lack
+      # them; bundling lets the Java side preload them before loading libwaylandcraft.so
+      # on desktop-class glibc runtimes.
       run: |
         python3 scripts/collect_deps.py native-libs/libwaylandcraft-${{ matrix.platform.name }}.so
         echo "--- bundled deps ---"
@@ -70,13 +70,184 @@ jobs:
         path: native-libs/
         if-no-files-found: error
 
-  build-java:
-    needs: compile-native-libs
+  # Build bionic (Android) libxkbcommon + libpipewire with the NDK so the
+  # waylandcraft native lib can load on Android launchers (e.g. OnyxLauncher).
+  # The OnyxLauncher JRE is a bionic runtime: glibc .so files can never load
+  # there (no libc.so.6), so the deps must be built against bionic libc too.
+  compile-android-deps:
     strategy:
       matrix:
-        arch:
-          - name: x86_64
+        target:
           - name: arm64
+            cpu_family: aarch64
+            ndk_clang: aarch64-linux-android30-clang
+          - name: x86_64
+            cpu_family: x86_64
+            ndk_clang: x86_64-linux-android30-clang
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install NDK + build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y meson ninja-build pkg-config unzip curl xz-utils
+        curl -sSLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+        unzip -q /tmp/ndk.zip -d /opt
+        echo "NDK=/opt/android-ndk-r27c" >> "$GITHUB_ENV"
+    - name: Write meson cross file
+      run: |
+        cat > /tmp/android-cross.ini <<EOF
+        [binaries]
+        c = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.ndk_clang }}'
+        cpp = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.ndk_clang }}++'
+        ar = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
+        strip = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+        [host_machine]
+        system = 'android'
+        cpu_family = '${{ matrix.target.cpu_family }}'
+        cpu = '${{ matrix.target.name }}'
+        endian = 'little'
+        EOF
+    - name: Build libxkbcommon (bionic)
+      run: |
+        git clone --depth 1 --branch xkbcommon-1.7.0 https://github.com/xkbcommon/libxkbcommon.git
+        meson setup libxkbcommon/build libxkbcommon --cross-file /tmp/android-cross.ini \
+          -Denable-x11=false -Denable-wayland=false -Denable-docs=false \
+          -Denable-tools=false -Denable-bash-completion=false
+        ninja -C libxkbcommon/build
+        ls -la libxkbcommon/build/libxkbcommon.so*
+    - name: Build libpipewire (bionic)
+      run: |
+        git clone --depth 1 --branch 1.4.0 https://gitlab.freedesktop.org/pipewire/pipewire.git
+        meson setup pipewire/build pipewire --cross-file /tmp/android-cross.ini \
+          -Ddbus=disabled -Dpipewire-alsa=disabled -Dpipewire-jack=disabled -Dpipewire-pulse=disabled \
+          -Dudev=disabled -Dsystemd=disabled -Dsession-managers=disabled -Dgstreamer=disabled \
+          -Dtests=disabled -Dexamples=disabled -Ddocs=disabled -Dman=disabled -Dspa-plugins=disabled \
+          -Dalsa=disabled -Djack=disabled -Dsndfile=disabled -Dv4l2=disabled
+        ninja -C pipewire/build
+        find pipewire/build -name "libpipewire-0.3.so*" -o -name "libspa*.so*" | head
+    - name: Assemble bionic deps bundle
+      run: |
+        PREFIX=bionic-prefix
+        mkdir -p $PREFIX/lib/pkgconfig $PREFIX/include/xkbcommon \
+                 $PREFIX/include/pipewire-0.3 $PREFIX/include/spa-0.2
+        # libxkbcommon: library + headers
+        cp -P libxkbcommon/build/libxkbcommon.so.0* $PREFIX/lib/
+        cp -r libxkbcommon/include/xkbcommon/* $PREFIX/include/xkbcommon/
+        # pipewire: library + headers (+ extensions, protocol dirs)
+        cp -P pipewire/build/src/pipewire/libpipewire-0.3.so.0* $PREFIX/lib/
+        cp -r pipewire/src/pipewire $PREFIX/include/pipewire-0.3/
+        # spa headers
+        cp -r pipewire/spa/include/spa $PREFIX/include/spa-0.2/
+        # pkg-config files (prefix resolved relative to the .pc location so the
+        # bundle works wherever it lands in CI)
+        cat > $PREFIX/lib/pkgconfig/xkbcommon.pc <<'EOF'
+        prefix=${pcfiledir}/../..
+        libdir=${prefix}/lib
+        includedir=${prefix}/include
+
+        Name: xkbcommon
+        Description: XKB API common
+        Version: 1.7.0
+        Libs: -L${libdir} -lxkbcommon
+        Cflags: -I${includedir}
+        EOF
+        cat > $PREFIX/lib/pkgconfig/libpipewire-0.3.pc <<'EOF'
+        prefix=${pcfiledir}/../..
+        libdir=${prefix}/lib
+        includedir=${prefix}/include
+
+        Name: libpipewire
+        Description: PipeWire
+        Version: 1.4.0
+        Libs: -L${libdir} -lpipewire-0.3
+        Cflags: -I${includedir}/pipewire-0.3 -I${includedir}/spa-0.2
+        EOF
+        echo "--- bundle ---"
+        find $PREFIX -type f -o -type l | sort
+    - name: Upload artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: android-deps-${{ matrix.target.name }}
+        path: bionic-prefix/
+        if-no-files-found: error
+
+  compile-native-android:
+    needs: compile-android-deps
+    strategy:
+      matrix:
+        target:
+          - name: arm64
+            rust_target: aarch64-linux-android
+            linker: aarch64-linux-android30-clang
+            env_upper: AARCH64_LINUX_ANDROID
+          - name: x86_64
+            rust_target: x86_64-linux-android
+            linker: x86_64-linux-android30-clang
+            env_upper: X86_64_LINUX_ANDROID
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install NDK + pkg-config + libclang (for bindgen)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config clang libclang-dev curl unzip
+        curl -sSLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+        unzip -q /tmp/ndk.zip -d /opt
+        echo "NDK=/opt/android-ndk-r27c" >> "$GITHUB_ENV"
+    - name: Download bionic deps
+      uses: actions/download-artifact@v8
+      with:
+        path: bionic
+        pattern: android-deps-${{ matrix.target.name }}
+        merge-multiple: true
+    - name: Setup rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target.rust_target }}
+    - name: Compile native library (android release)
+      working-directory: native/
+      env:
+        PKG_CONFIG_ALLOW_CROSS: "1"
+        PKG_CONFIG_PATH: ${{ github.workspace }}/bionic/lib/pkgconfig
+        CARGO_TARGET_${{ matrix.target.env_upper }}_LINKER: ${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.linker }}
+        CARGO_TARGET_${{ matrix.target.env_upper }}_AR: ${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+      run: cargo build --release --target=${{ matrix.target.rust_target }}
+    - name: Move native library + bundled deps
+      run: |
+        mkdir -p native-libs/deps
+        cp native/target/${{ matrix.target.rust_target }}/release/libwaylandcraft.so \
+          native-libs/libwaylandcraft-android-${{ matrix.target.name }}.so
+        cp -P bionic/lib/libxkbcommon.so.0* native-libs/deps/
+        cp -P bionic/lib/libpipewire-0.3.so.0* native-libs/deps/
+        printf 'libxkbcommon.so.0\nlibpipewire-0.3.so.0\n' > native-libs/deps/deps.list
+        echo "--- native-libs ---"
+        ls -la native-libs/ native-libs/deps/
+        file native-libs/*.so native-libs/deps/*.so || true
+    - name: Upload artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: libwaylandcraft-android-${{ matrix.target.name }}
+        path: native-libs/
+        if-no-files-found: error
+
+  build-java:
+    needs: [compile-native-libs, compile-native-android]
+    strategy:
+      matrix:
+        variant:
+          - platform: linux-gnu
+            jar_platform: linux
+            arch: x86_64
+          - platform: linux-gnu
+            jar_platform: linux
+            arch: arm64
+          - platform: android
+            jar_platform: android
+            arch: x86_64
+          - platform: android
+            jar_platform: android
+            arch: arm64
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
@@ -84,7 +255,7 @@ jobs:
       uses: actions/download-artifact@v8
       with:
         path: native-libs
-        pattern: libwaylandcraft-linux-gnu-${{ matrix.arch.name }}
+        pattern: libwaylandcraft-${{ matrix.variant.platform }}-${{ matrix.variant.arch }}
         merge-multiple: true
     - name: Verify native lib
       run: |
@@ -98,15 +269,15 @@ jobs:
         distribution: 'temurin'
     - name: Setup gradle
       uses: gradle/actions/setup-gradle@v6
-    - name: Build java code (${{ matrix.arch.name }})
-      run: ./gradlew build -PwlArch=${{ matrix.arch.name }}
+    - name: Build java code (${{ matrix.variant.jar_platform }}-${{ matrix.variant.arch }})
+      run: ./gradlew build -PwlPlatform=${{ matrix.variant.platform }} -PwlArch=${{ matrix.variant.arch }}
     - name: Verify jar contents
-      run: python3 scripts/verify_jar.py ${{ matrix.arch.name }}
+      run: python3 scripts/verify_jar.py ${{ matrix.variant.platform }} ${{ matrix.variant.arch }}
     - name: Upload jar artifact
       uses: actions/upload-artifact@v7
       with:
-        name: waylandcraft-jar-${{ matrix.arch.name }}
-        path: build/libs/waylandcraft-linux-${{ matrix.arch.name }}.jar
+        name: waylandcraft-jar-${{ matrix.variant.jar_platform }}-${{ matrix.variant.arch }}
+        path: build/libs/waylandcraft-${{ matrix.variant.jar_platform }}-${{ matrix.variant.arch }}.jar
         if-no-files-found: error
 
   release:
@@ -135,5 +306,7 @@ jobs:
           gh release upload "$TAG" *.jar --repo "$GITHUB_REPOSITORY" --clobber
         else
           echo "Creating release $TAG"
-          gh release create "$TAG" *.jar --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Automated multi-arch release (waylandcraft-linux-x86_64.jar / waylandcraft-linux-arm64.jar)"
+          gh release create "$TAG" *.jar --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Automated multi-arch release (linux + android bionic):
+        - waylandcraft-linux-x86_64.jar / waylandcraft-linux-arm64.jar (desktop)
+        - waylandcraft-android-x86_64.jar / waylandcraft-android-arm64.jar (Android launchers like OnyxLauncher)"
         fi
