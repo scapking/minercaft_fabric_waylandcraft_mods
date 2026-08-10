@@ -3,7 +3,8 @@ build/
 native-libs/
 *.class
 META-INF/
-dev/
+# 只忽略仓库根目录下的 dev 目录，不要误伤 src/main/java/dev/（mod 源码）
+/dev/
 
 # Gradle
 .gradle/
