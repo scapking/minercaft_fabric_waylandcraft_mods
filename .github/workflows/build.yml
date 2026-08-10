@@ -91,21 +91,7 @@ jobs:
     - name: Build java code (${{ matrix.arch.name }})
       run: ./gradlew build -PwlArch=${{ matrix.arch.name }}
     - name: Verify jar contents
-      run: |
-        ls -la build/libs/
-        python3 -c "
-import zipfile, glob, sys
-jar = [f for f in glob.glob('build/libs/waylandcraft-linux-${{ matrix.arch.name }}.jar')]
-assert jar, 'jar not found'
-z = zipfile.ZipFile(jar[0])
-names = z.namelist()
-libs = [n for n in names if n.startswith('libwaylandcraft-linux-gnu-')]
-sats = [n for n in names if n.startswith('xwayland-satellite-linux-gnu-')]
-print('native libs:', libs)
-print('satellites:', sats)
-assert libs == ['libwaylandcraft-linux-gnu-${{ matrix.arch.name }}.so'], 'unexpected native libs'
-assert sats == ['xwayland-satellite-linux-gnu-${{ matrix.arch.name }}'], 'unexpected satellites'
-"
+      run: python3 scripts/verify_jar.py ${{ matrix.arch.name }}
     - name: Upload jar artifact
       uses: actions/upload-artifact@v7
       with:
