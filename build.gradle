@@ -132,10 +132,12 @@ jar {
 
 	// Bundled xwayland-satellite binaries (built by native/build-satellite.sh)
 	// so X11 apps get a DISPLAY without the user installing satellite themselves.
-	def satelliteTargets = wlArch ? ["linux-gnu-${wlArch}"] : [
+	// Desktop (linux) only: Android launchers have no X11/Xwayland, so android
+	// jars must NOT bundle the satellite binary.
+	def satelliteTargets = (wlPlatform == 'android') ? [] : (wlArch ? ["linux-gnu-${wlArch}"] : [
 		"linux-gnu-x86_64",
 		"linux-gnu-arm64"
-	];
+	]);
 	for(def target in satelliteTargets) {
 		def f = file("native/xwayland-satellite-${target}")
 		if(!f.exists()) continue;
