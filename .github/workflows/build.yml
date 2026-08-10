@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to create (e.g. v0.2.20). Leave empty to only build the jar artifact.'
+        description: 'Release tag to create (e.g. v0.2.21). Leave empty to only build the jar artifacts.'
         required: false
         default: ''
   push:
@@ -62,17 +62,22 @@ jobs:
         if-no-files-found: error
 
   build-java:
-    runs-on: ubuntu-24.04
     needs: compile-native-libs
+    strategy:
+      matrix:
+        arch:
+          - name: x86_64
+          - name: arm64
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
-    - name: Download native libs
+    - name: Download native lib
       uses: actions/download-artifact@v8
       with:
         path: native-libs
-        pattern: libwaylandcraft-*
+        pattern: libwaylandcraft-linux-gnu-${{ matrix.arch.name }}
         merge-multiple: true
-    - name: Verify native libs
+    - name: Verify native lib
       run: |
         ls -la native-libs/
         file native-libs/*.so || true
@@ -83,19 +88,56 @@ jobs:
         distribution: 'temurin'
     - name: Setup gradle
       uses: gradle/actions/setup-gradle@v6
-    - name: Build java code
-      run: ./gradlew build
+    - name: Build java code (${{ matrix.arch.name }})
+      run: ./gradlew build -PwlArch=${{ matrix.arch.name }}
+    - name: Verify jar contents
+      run: |
+        ls -la build/libs/
+        python3 -c "
+import zipfile, glob, sys
+jar = [f for f in glob.glob('build/libs/waylandcraft-linux-${{ matrix.arch.name }}.jar')]
+assert jar, 'jar not found'
+z = zipfile.ZipFile(jar[0])
+names = z.namelist()
+libs = [n for n in names if n.startswith('libwaylandcraft-linux-gnu-')]
+sats = [n for n in names if n.startswith('xwayland-satellite-linux-gnu-')]
+print('native libs:', libs)
+print('satellites:', sats)
+assert libs == ['libwaylandcraft-linux-gnu-${{ matrix.arch.name }}.so'], 'unexpected native libs'
+assert sats == ['xwayland-satellite-linux-gnu-${{ matrix.arch.name }}'], 'unexpected satellites'
+"
     - name: Upload jar artifact
       uses: actions/upload-artifact@v7
       with:
-        name: waylandcraft-jar
-        path: build/libs/waylandcraft.jar
+        name: waylandcraft-jar-${{ matrix.arch.name }}
+        path: build/libs/waylandcraft-linux-${{ matrix.arch.name }}.jar
         if-no-files-found: error
-    - name: Create GitHub Release
-      if: github.event.inputs.tag != ''
-      env:
-        GH_TAG: ${{ github.event.inputs.tag }}
-      uses: softprops/action-gh-release@v2
+
+  release:
+    needs: build-java
+    runs-on: ubuntu-24.04
+    if: needs.build-java.result == 'success' && (github.event.inputs.tag != '' || github.event_name == 'push')
+    steps:
+    - name: Download jars
+      uses: actions/download-artifact@v8
       with:
-        tag_name: ${{ env.GH_TAG }}
-        files: build/libs/waylandcraft.jar
+        path: jars
+        pattern: waylandcraft-jar-*
+        merge-multiple: true
+    - name: Show jars
+      run: |
+        ls -la jars/
+        sha256sum jars/*.jar
+    - name: Create or update GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.ref_name }}
+      run: |
+        cd jars
+        if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "Release $TAG exists, uploading assets"
+          gh release upload "$TAG" *.jar --repo "$GITHUB_REPOSITORY" --clobber
+        else
+          echo "Creating release $TAG"
+          gh release create "$TAG" *.jar --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Automated multi-arch release (waylandcraft-linux-x86_64.jar / waylandcraft-linux-arm64.jar)"
+        fi

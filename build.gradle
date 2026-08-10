@@ -6,8 +6,12 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+// Optional -PwlArch=arm64|x86_64 selects a single-arch jar
+// (used by the CI matrix). Without it the jar bundles both arches.
+def wlArch = providers.gradleProperty('wlArch').getOrElse('')
+
 base {
-	archivesName = project.archives_base_name
+	archivesName = wlArch ? "${project.archives_base_name}-linux-${wlArch}" : project.archives_base_name
 }
 
 repositories {
@@ -78,23 +82,26 @@ jar {
 	// 按 host 架构重命名打进 jar（libwaylandcraft-linux-gnu-<arch>.so），
 	// 不要使用无后缀的 /libwaylandcraft.so —— 否则 arm64 设备会优先加载到
 	// x86_64 的 host 库而崩溃（EM_X86_64 instead of EM_AARCH64）。
-	def nativeFile = file("native/target/release/libwaylandcraft.so")
-	if(!nativeFile.exists()) {
-		nativeFile = file("native/target/debug/libwaylandcraft.so")
-	}
-	if(nativeFile.exists()) {
-		def hostArch = System.getProperty("os.arch").toLowerCase()
-		def hostArchName = (hostArch.contains("aarch64") || hostArch.contains("arm64")) ? "arm64" : "x86_64"
-		with(copySpec {
-			from(nativeFile)
-			rename { "libwaylandcraft-linux-gnu-${hostArchName}.so" }
-		})
-		natives.add("host")
+	// 指定 -PwlArch 时跳过 host lib，只打包该架构的库。
+	if(!wlArch) {
+		def nativeFile = file("native/target/release/libwaylandcraft.so")
+		if(!nativeFile.exists()) {
+			nativeFile = file("native/target/debug/libwaylandcraft.so")
+		}
+		if(nativeFile.exists()) {
+			def hostArch = System.getProperty("os.arch").toLowerCase()
+			def hostArchName = (hostArch.contains("aarch64") || hostArch.contains("arm64")) ? "arm64" : "x86_64"
+			with(copySpec {
+				from(nativeFile)
+				rename { "libwaylandcraft-linux-gnu-${hostArchName}.so" }
+			})
+			natives.add("host")
+		}
 	}
 
 	// Packaging of libraries in directory `native-libs`
 	// Used by the actions runner for releases
-	def targets = [
+	def targets = wlArch ? ["linux-gnu-${wlArch}"] : [
 		"linux-gnu-x86_64",
 		"linux-gnu-arm64"
 	];
@@ -111,7 +118,7 @@ jar {
 
 	// Bundled xwayland-satellite binaries (built by native/build-satellite.sh)
 	// so X11 apps get a DISPLAY without the user installing satellite themselves.
-	def satelliteTargets = [
+	def satelliteTargets = wlArch ? ["linux-gnu-${wlArch}"] : [
 		"linux-gnu-x86_64",
 		"linux-gnu-arm64"
 	];
