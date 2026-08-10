@@ -28,16 +28,31 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Install dependencies
-      run: sudo apt install -y libxkbcommon-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config \
+          libpipewire-0.3-dev \
+          libxkbcommon-dev \
+          libdrm-dev \
+          libgbm-dev \
+          libudev-dev \
+          libwayland-dev \
+          libegl-dev \
+          mesa-common-dev \
+          libxcb1-dev \
+          libxcb-cursor-dev \
+          libxcb-xfixes0-dev \
+          libxcb-randr0-dev \
+          libxcb-composite0-dev
     - name: Setup rust toolchain
       uses: dtolnay/rust-toolchain@stable
-    - name: Compile native library
+    - name: Compile native library (release)
       working-directory: native/
-      run: cargo build --target=${{ matrix.platform.target }}
+      run: cargo build --release --target=${{ matrix.platform.target }}
     - name: Move native library
       run: |
         mkdir native-libs
-        mv native/target/${{ matrix.platform.target }}/debug/libwaylandcraft.so \
+        mv native/target/${{ matrix.platform.target }}/release/libwaylandcraft.so \
           native-libs/libwaylandcraft-${{ matrix.platform.name }}.so
     - name: Upload artifact
       uses: actions/upload-artifact@v7
