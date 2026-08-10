@@ -124,6 +124,10 @@ jobs:
         # variable is undefined. We don't need echo-cancel, so drop the reference.
         sed -i 's/dependencies : \[mathlib, dl_lib, pipewire_dep, plugin_dependencies\],/dependencies : [mathlib, dl_lib, pipewire_dep],/' \
           pipewire/src/modules/meson.build
+        # bionic (Android) has no pthread_cancel; it is only called when a loop is
+        # created with PW_KEY_LOOP_CANCEL=true which our usage never sets, so stub it.
+        sed -i 's/pthread_cancel(loop->thread);/\/\/ pthread_cancel unavailable on bionic; loop->cancel never set by waylandcraft/' \
+          pipewire/src/pipewire/data-loop.c
         meson setup pipewire/build pipewire --cross-file /tmp/android-cross.ini \
           -Ddbus=disabled -Dpipewire-alsa=disabled -Dpipewire-jack=disabled \
           -Dflatpak=disabled -Dsnap=disabled \
