@@ -64,6 +64,10 @@ public class WindowShareManager {
 	// 无内容变化时，最多间隔这么久强制发一帧，保证接收端纹理持续刷新
 	private static final long HEARTBEAT_INTERVAL_MS = 2000;
 	
+	// === JPEG 大小保护 / 编码耗时 ===
+	// 整帧 capture+encode（含降级重编码）超过 20ms 时 LOGGER.debug 输出，用于诊断发送端是否吃紧
+	private static final long ENCODE_WARN_THRESHOLD_NANOS = 20_000_000L; // 20ms
+	
 	public WindowShareManager(WaylandCraft clientMod) {
 		this.clientMod = clientMod;
 		this.serverMod = null;
@@ -192,12 +196,9 @@ public class WindowShareManager {
 		}
 		
 		// === 捕获（使用优化的PBO+GPU缩放+直接编码路径，PBO/FBO 按窗口隔离） ===
-		byte[] imageData = ImageCapture.captureFromFramebuffer(
-			state.windowHandle,
-			toplevel.framebuffer,
-			effectiveScale,
-			effectiveConfig.quality
-		);
+		// 带 JPEG 大小保护：编码完成后若超过上限，自动降级重编码（先降 quality 再降 scale，
+		// 最多 maxDegradeRounds 轮）；最后仍超限则丢弃该帧并告警（避免超过 CustomPacketPayload 包上限）。
+		byte[] imageData = captureFrameWithSizeProtection(state, toplevel, effectiveConfig, effectiveScale);
 		
 		if(imageData == null) {
 			return;
@@ -290,6 +291,153 @@ public class WindowShareManager {
 		state.totalBytes += processedData.length;
 		state.currentFps = frameRateController.getCurrentFps(state.windowHandle);
 		state.currentBitrate = bytesSentThisSecond * 8 / 1000; // kbps
+	}
+	
+	/**
+	 * 捕获并编码一帧 JPEG，带发送端大小保护（自动降级）。
+	 *
+	 * 流程：
+	 * 1. 按 (effectiveScale, config.quality) 正常捕获+编码；
+	 * 2. 编码结果 &gt; config.maxJpegBytes 时自动降级重编码：
+	 *    - 第 1 轮降 quality（沿 jpegQualityLadder 取严格更小的下一档，如 1.0 → 0.85 → 0.7），
+	 *      quality 已到阶梯底时改降 scale 兜底；
+	 *    - 第 2 轮及以后 quality 与 scale 各降一档（scale 沿 jpegScaleLadder，如 1.0 → 0.75 → 0.5），
+	 *      最大化命中上限的几率；
+	 *    - 每轮降级 LOGGER.warn 记录窗口 handle、原/降后大小、当前 quality/scale；
+	 *    - 最多 config.maxDegradeRounds 轮（默认 2），有界，不会死循环；
+	 * 3. 最后仍超限 → 丢弃该帧并 LOGGER.error 告警（避免超过协议包上限导致崩溃）。
+	 *
+	 * 编码耗时统计：整帧 capture+encode（含可能的降级重编码）&gt; 20ms 时 LOGGER.debug 输出。
+	 *
+	 * 说明：降级重编码走与正常路径相同的 captureFromFramebuffer（scale 变化需重新 GPU 缩放、
+	 * quality 变化同样重编码），PBO/FBO 按窗口隔离，多窗口无串扰；
+	 * 同尺寸重捕获时 PBO 映射到的是本窗口上一帧数据（内容一致，无花屏）。
+	 * diff/raw 捕获路径（captureFromFramebufferRaw）不受影响。
+	 *
+	 * @return 不超过大小上限的 JPEG 数据；捕获失败或超限丢弃时返回 null
+	 */
+	@Nullable
+	private byte[] captureFrameWithSizeProtection(ShareState state, WLCToplevel toplevel,
+			ImageCapture.CaptureConfig config, float effectiveScale) {
+		long frameStart = System.nanoTime();
+		
+		float scale = effectiveScale;
+		float quality = config.quality;
+		byte[] imageData = ImageCapture.captureFromFramebuffer(
+			state.windowHandle,
+			toplevel.framebuffer,
+			scale,
+			quality
+		);
+		if(imageData == null) {
+			return null;
+		}
+		
+		// === JPEG 大小保护：超限自动降级重编码（maxJpegBytes <= 0 表示不限制，直发） ===
+		int degradeRounds = 0;
+		if(config.maxJpegBytes > 0) {
+			while(imageData.length > config.maxJpegBytes && degradeRounds < config.maxDegradeRounds) {
+				long beforeSize = imageData.length;
+				float[] nextParams = nextDegradeParams(config, scale, quality, degradeRounds);
+				if(nextParams == null) {
+					break; // 无可降级项，避免死循环，直接走最终超限判定
+				}
+				scale = nextParams[0];
+				quality = nextParams[1];
+				
+				byte[] reencoded = ImageCapture.captureFromFramebuffer(
+					state.windowHandle,
+					toplevel.framebuffer,
+					scale,
+					quality
+				);
+				if(reencoded == null) {
+					return null;
+				}
+				
+				degradeRounds++;
+				LOGGER.warn("Window 0x{} JPEG over size limit ({} bytes): {} -> {} bytes, degrade round {}: quality={} scale={}",
+					Long.toHexString(state.windowHandle), config.maxJpegBytes,
+					beforeSize, reencoded.length, degradeRounds,
+					String.format("%.2f", quality), String.format("%.2f", scale));
+				imageData = reencoded;
+			}
+			
+			// === 最终判定：仍超限 → 丢弃本帧并告警 ===
+			if(imageData.length > config.maxJpegBytes) {
+				state.sizeDroppedFrames++;
+				LOGGER.error("Window 0x{} JPEG still over size limit after {} degrade round(s): {} bytes > {} bytes, DROPPING frame",
+					Long.toHexString(state.windowHandle), degradeRounds,
+					imageData.length, config.maxJpegBytes);
+				return null;
+			}
+			
+			if(degradeRounds > 0) {
+				state.degradedFrames++;
+			}
+		}
+		
+		// === 编码耗时统计（整帧 capture+encode） ===
+		long frameNanos = System.nanoTime() - frameStart;
+		if(frameNanos > ENCODE_WARN_THRESHOLD_NANOS) {
+			LOGGER.debug("Window 0x{} frame capture+encode took {} ms ({} bytes, {} degrade round(s))",
+				Long.toHexString(state.windowHandle), String.format("%.1f", frameNanos / 1_000_000.0),
+				imageData.length, degradeRounds);
+		}
+		
+		return imageData;
+	}
+	
+	/**
+	 * 计算下一轮降级参数（float[2] = {scale, quality}）。
+	 * 降级顺序（阶梯取严格小于当前值的下一档）：
+	 * - 第 1 轮：只降 quality（1.0 → 0.85 → 0.7）；quality 已到阶梯底时改降 scale 兜底；
+	 * - 第 2 轮及以后：quality 与 scale 各降一档（最后一轮机会，最大化命中上限的几率），
+	 *   某一维已到阶梯底时用另一维兜底。
+	 * 两维都无可降级项时返回 null（调用方直接丢弃该帧）。
+	 */
+	@Nullable
+	private static float[] nextDegradeParams(ImageCapture.CaptureConfig config, float scale, float quality, int degradeRound) {
+		float nextQuality = nextLadderValue(config.jpegQualityLadder, quality);
+		float nextScale = nextLadderValue(config.jpegScaleLadder, scale);
+		
+		if(degradeRound == 0) {
+			// 第 1 轮：先降 quality；quality 无可降 → 降 scale 兜底
+			if(nextQuality >= 0) {
+				return new float[]{scale, nextQuality};
+			}
+			if(nextScale >= 0) {
+				return new float[]{nextScale, quality};
+			}
+			return null;
+		}
+		// 第 2 轮及以后：quality + scale 各降一档（缺失维度用另一维兜底）
+		if(nextQuality >= 0 && nextScale >= 0) {
+			return new float[]{nextScale, nextQuality};
+		}
+		if(nextScale >= 0) {
+			return new float[]{nextScale, quality};
+		}
+		if(nextQuality >= 0) {
+			return new float[]{scale, nextQuality};
+		}
+		return null;
+	}
+	
+	/**
+	 * 在降级阶梯中取严格小于 current 的最大档位；阶梯为 null 或无更小档位时返回 -1。
+	 */
+	private static float nextLadderValue(float[] ladder, float current) {
+		if(ladder == null) {
+			return -1f;
+		}
+		float best = -1f;
+		for(float v : ladder) {
+			if(v < current - 1e-4f && v > best) {
+				best = v;
+			}
+		}
+		return best;
 	}
 	
 	/**
@@ -396,9 +544,11 @@ public class WindowShareManager {
 		long totalBytes = shareStates.values().stream().mapToLong(s -> s.totalBytes).sum();
 		long totalSkipped = shareStates.values().stream().mapToLong(s -> s.skippedFrames).sum();
 		long totalRateLimited = shareStates.values().stream().mapToLong(s -> s.rateLimitedFrames).sum();
+		long totalDegraded = shareStates.values().stream().mapToLong(s -> s.degradedFrames).sum();
+		long totalSizeDropped = shareStates.values().stream().mapToLong(s -> s.sizeDroppedFrames).sum();
 		
-		return String.format("Windows: %d, Frames: %d, Skipped: %d, RateLimited: %d, Bytes: %d, Adaptive: %.2f, Utilization: %.1f%%", 
-			shareStates.size(), totalFrames, totalSkipped, totalRateLimited, totalBytes,
+		return String.format("Windows: %d, Frames: %d, Skipped: %d, RateLimited: %d, Degraded: %d, SizeDropped: %d, Bytes: %d, Adaptive: %.2f, Utilization: %.1f%%", 
+			shareStates.size(), totalFrames, totalSkipped, totalRateLimited, totalDegraded, totalSizeDropped, totalBytes,
 			adaptiveScaleMultiplier, getBitrateUtilization() * 100);
 	}
 	
@@ -416,6 +566,8 @@ public class WindowShareManager {
 		public long totalBytes = 0;
 		public long skippedFrames = 0;      // diff检测跳过的帧数
 		public long rateLimitedFrames = 0;   // 码率限制跳过的帧数
+		public long degradedFrames = 0;      // 因超限降级后实际发送的帧数
+		public long sizeDroppedFrames = 0;   // 降级后仍超限被丢弃的帧数
 		public int currentFps = 0;           // 当前实际帧率
 		public long currentBitrate = 0;      // 当前码率 (kbps)
 		

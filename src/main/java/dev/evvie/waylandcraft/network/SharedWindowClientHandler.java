@@ -14,6 +14,7 @@ import dev.evvie.waylandcraft.render.SharedWindowDisplay;
 import dev.evvie.waylandcraft.shared.RemoteWindowRenderer;
 import dev.evvie.waylandcraft.shared.WindowPermission;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import dev.evvie.waylandcraft.network.PermissionResponsePayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
@@ -71,6 +72,14 @@ public class SharedWindowClientHandler {
 			});
 		});
 		
+		// 处理客户端断开：清空渲染器的待解码队列、解码线程池与纹理（避免资源泄漏）
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+			WaylandCraft wlc = WaylandCraft.instance;
+			if(wlc != null && wlc.remoteWindowRenderer != null) {
+				wlc.remoteWindowRenderer.clear();
+			}
+		});
+		
 		LOGGER.info("Shared window client handlers registered");
 	}
 	
@@ -81,6 +90,23 @@ public class SharedWindowClientHandler {
 		List<SharedWindowListPayload.WindowInfo> windowList = payload.windows();
 		
 		LOGGER.info("Received window list update: {} windows", windowList.size());
+		
+		// 清理已注销/消失窗口的纹理与解码队列（避免残留纹理与队列泄漏）
+		WaylandCraft instance = WaylandCraft.instance;
+		if(instance != null && instance.remoteWindowRenderer != null) {
+			for(Long handle : remoteWindows.keySet()) {
+				boolean stillListed = false;
+				for(SharedWindowListPayload.WindowInfo w : windowList) {
+					if(w.windowHandle() == handle) {
+						stillListed = true;
+						break;
+					}
+				}
+				if(!stillListed) {
+					instance.remoteWindowRenderer.destroyTexture(handle);
+				}
+			}
+		}
 		
 		// 更新远程窗口缓存
 		remoteWindows.clear();
@@ -126,10 +152,10 @@ public class SharedWindowClientHandler {
 			return;
 		}
 		
-		// 节流：渲染线程上 JPEG 解码较慢，网络帧率（~20fps）会直接把主线程卡死，
-		// 表现为"远程画面不更新"。限制到 ~12fps 处理。
+		// 节流：JPEG 解码已移到后台工作线程（updateTexture 只入队），主线程不再被解码卡住。
+		// 保留 50ms 节流匹配 20fps，防止入队/状态更新过频造成无意义堆积。
 		long now = System.currentTimeMillis();
-		if(now - info.lastImageProcessTime < 80) {
+		if(now - info.lastImageProcessTime < 50) {
 			return;
 		}
 		info.lastImageProcessTime = now;

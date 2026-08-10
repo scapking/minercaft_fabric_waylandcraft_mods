@@ -15,6 +15,9 @@ import net.minecraft.server.level.ServerPlayer;
 
 public class WaylandCraftNetworking {
 	
+	/** 最新帧缓存 + tick 批量转发器（与 receiver 在同一初始化流程中注册） */
+	private static final SharedWindowFrameRelay frameRelay = new SharedWindowFrameRelay();
+	
 	public static void register() {
 		PayloadTypeRegistry.serverboundPlay().register(ServerboundGiveItemsPayload.TYPE, ServerboundGiveItemsPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(ServerboundAliveWindowsPayload.TYPE, ServerboundAliveWindowsPayload.CODEC);
@@ -75,7 +78,9 @@ public class WaylandCraftNetworking {
 			});
 		});
 		
-		// 处理客户端上传的窗口图像 - 转发给其他有权限的玩家
+		// 处理客户端上传的窗口图像 - 只做权限校验并入最新帧缓存；
+		// 实际转发由服务端 tick（SharedWindowFrameRelay，每 2 tick 批量转发）完成，
+		// netty 线程内绝不调用 ServerPlayNetworking.send，避免堵死发送者连接。
 		ServerPlayNetworking.registerGlobalReceiver(SharedWindowImagePayload.TYPE, (payload, ctx) -> {
 			ServerPlayer sender = ctx.player();
 			UUID senderUUID = sender.getUUID();
@@ -89,18 +94,12 @@ public class WaylandCraftNetworking {
 				return;
 			}
 			
-			// 转发给所有其他有VIEW权限的在线玩家
-			int forwarded = 0;
-			for(ServerPlayer player : sender.level().getServer().getPlayerList().getPlayers()) {
-				if(player.getUUID().equals(senderUUID)) continue;
-				if(entry.hasPermission(player.getUUID(), WindowPermission.VIEW)) {
-					ServerPlayNetworking.send(player, payload);
-					forwarded++;
-				}
-			}
-			WaylandCraftCommon.LOGGER.info("[SERVER] forwarded image from {} to {} players ({} bytes)", 
-				senderUUID, forwarded, payload.imageData().length);
+			// 校验通过：只把最新帧存入缓存（按 windowHandle 覆盖旧帧 = 丢中间帧）
+			frameRelay.acceptFrame(payload);
 		});
+		
+		// tick 转发注册与 receiver 注册在同一初始化流程
+		frameRelay.register();
 		
 		ServerPlayNetworking.registerGlobalReceiver(SharedWindowInteractionPayload.TYPE, (payload, ctx) -> {
 			ServerPlayer player = ctx.player();

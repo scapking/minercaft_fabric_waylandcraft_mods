@@ -900,6 +900,19 @@ public class ImageCapture {
 		public String compression;
 		public float diffThreshold;  // 新增：像素变化阈值
 		
+		// === JPEG 大小保护（发送端自动降级） ===
+		// 默认参数：上限 1.8MB（低于 MC CustomPacketPayload 约 2MB 包上限，留出余量），
+		// 最多降 2 轮：先降 quality（1.0 → 0.85 → 0.7），仍超限再降 scale（1.0 → 0.75 → 0.5）。
+		public static final long DEFAULT_MAX_JPEG_BYTES = 1_800_000L;
+		public static final int DEFAULT_MAX_DEGRADE_ROUNDS = 2;
+		public static final float[] DEFAULT_JPEG_QUALITY_LADDER = {1.0f, 0.85f, 0.7f};
+		public static final float[] DEFAULT_JPEG_SCALE_LADDER = {1.0f, 0.75f, 0.5f};
+		
+		public long maxJpegBytes;         // 单帧 JPEG 大小上限（超限自动降级重编码；0 表示不限制）
+		public int maxDegradeRounds;      // 最多降级重编码轮数（0 = 不降级，超限直接丢弃）
+		public float[] jpegQualityLadder; // quality 降级阶梯（取严格小于当前 quality 的下一档）
+		public float[] jpegScaleLadder;   // scale 降级阶梯（取严格小于当前 scale 的下一档）
+		
 		public CaptureConfig(float scale, float quality, int maxFps) {
 			this(scale, quality, maxFps, true, 0, 3, 0, false, "jpeg", 0.02f);
 		}
@@ -923,6 +936,30 @@ public class ImageCapture {
 			this.prediction = prediction;
 			this.compression = compression;
 			this.diffThreshold = Math.max(0.001f, Math.min(1.0f, diffThreshold));
+			// JPEG 大小保护默认值（所有既有构造路径自动获得，不影响兼容性）
+			this.maxJpegBytes = DEFAULT_MAX_JPEG_BYTES;
+			this.maxDegradeRounds = DEFAULT_MAX_DEGRADE_ROUNDS;
+			this.jpegQualityLadder = DEFAULT_JPEG_QUALITY_LADDER.clone();
+			this.jpegScaleLadder = DEFAULT_JPEG_SCALE_LADDER.clone();
+		}
+		
+		/**
+		 * 完整配置（含 JPEG 大小保护参数）。
+		 * 传入 null 或空数组的阶梯时保持默认阶梯；maxJpegBytes/maxDegradeRounds 传入负值取 0。
+		 */
+		public CaptureConfig(float scale, float quality, int maxFps,
+				boolean diffUpdate, int maxBitrate, int frameBuffer,
+				int latencyComp, boolean prediction, String compression, float diffThreshold,
+				long maxJpegBytes, int maxDegradeRounds, float[] jpegQualityLadder, float[] jpegScaleLadder) {
+			this(scale, quality, maxFps, diffUpdate, maxBitrate, frameBuffer, latencyComp, prediction, compression, diffThreshold);
+			this.maxJpegBytes = Math.max(0L, maxJpegBytes);
+			this.maxDegradeRounds = Math.max(0, maxDegradeRounds);
+			if(jpegQualityLadder != null && jpegQualityLadder.length > 0) {
+				this.jpegQualityLadder = jpegQualityLadder.clone();
+			}
+			if(jpegScaleLadder != null && jpegScaleLadder.length > 0) {
+				this.jpegScaleLadder = jpegScaleLadder.clone();
+			}
 		}
 		
 		public static CaptureConfig highPerformance() {
@@ -943,8 +980,8 @@ public class ImageCapture {
 		
 		public String getSummary() {
 			return String.format(
-				"scale=%.2f quality=%.2f fps=%d diff=%s bitrate=%dkbps buffer=%d latency=%dms pred=%s comp=%s diffThreshold=%.3f",
-				scale, quality, maxFps, diffUpdate, maxBitrate, frameBuffer, latencyComp, prediction, compression, diffThreshold
+				"scale=%.2f quality=%.2f fps=%d diff=%s bitrate=%dkbps buffer=%d latency=%dms pred=%s comp=%s diffThreshold=%.3f jpegLimit=%d jpegRounds=%d",
+				scale, quality, maxFps, diffUpdate, maxBitrate, frameBuffer, latencyComp, prediction, compression, diffThreshold, maxJpegBytes, maxDegradeRounds
 			);
 		}
 	}

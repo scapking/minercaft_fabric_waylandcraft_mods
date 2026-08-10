@@ -71,6 +71,10 @@ jar {
 	inputs.property "archivesName", project.base.archivesName
 	version = null
 
+	// host lib（native/target/release）与 native-libs/ 里同名 .so 是同一文件，
+	// 保留先加入的即可，避免 duplicate entry 打包失败。
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
 	from("LICENSE") {
 		rename { "${it}_${inputs.properties.archivesName}"}
 	}
