@@ -90,15 +90,12 @@ public class WaylandCraftBridge {
 		}
 		
 		nativeAvailable = loaded;
-		if(!loaded) {
-			// Don't extract the satellite binary either: with no native bridge
-			// there is nothing to serve it. Game keeps running, mod disabled.
-			return;
-		}
 		
-		// 解压内嵌的 xwayland-satellite 二进制（如 jar 里带的话），
-		// 让 X11 应用无需用户手动安装 satellite 也能拿到 DISPLAY。
-		extractSatelliteBinary();
+		if(loaded) {
+			// 解压内嵌的 xwayland-satellite 二进制（如 jar 里带的话），
+			// 让 X11 应用无需用户手动安装 satellite 也能拿到 DISPLAY。
+			extractSatelliteBinary();
+		}
 	}
 	
 	/**
