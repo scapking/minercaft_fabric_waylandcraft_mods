@@ -1,6 +1,9 @@
 use std::ffi::OsStr;
 use std::os::unix::net::{SocketAddr, UnixListener};
+#[cfg(target_os = "linux")]
 use std::os::linux::net::SocketAddrExt;
+#[cfg(target_os = "android")]
+use std::os::android::net::SocketAddrExt;
 use std::os::fd::{OwnedFd, RawFd, AsRawFd};
 use std::process::{Command, Child, Stdio};
 use rustix::io::{Errno, write, fcntl_setfd, FdFlags};
