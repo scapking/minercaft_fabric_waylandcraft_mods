@@ -178,9 +178,11 @@ public class SharedWindowDisplay {
 	
 	/**
 	 * 获取像素缩放比例 — 与WindowDisplay一致，读取用户设置
+	 * （native 不可用的纯查看端 settings 可能为 null，退回默认 500 ppb）
 	 */
 	public float pixelScale() {
-		return 1.0f / WaylandCraft.instance.settings.getPixelsPerBlock();
+		var s = WaylandCraft.instance.settings;
+		return 1.0f / (s != null ? s.getPixelsPerBlock() : 500);
 	}
 	
 	/**

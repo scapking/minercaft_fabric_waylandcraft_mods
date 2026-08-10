@@ -241,7 +241,9 @@ public class RenderUtils {
 		Function<Identifier, RenderType> renderType;
 		
 		// Front quad
-		if(WaylandCraft.instance.settings.getAntialiasing()) renderType = cutout ? WINDOW_CUTOUT_ANTIALIAS : WINDOW_TRANSLUCENT_ANTIALIAS;
+		// native 不可用的纯查看端（Android 手机）settings 可能为 null，退回默认（无抗锯齿）
+		boolean antialias = WaylandCraft.instance.settings != null && WaylandCraft.instance.settings.getAntialiasing();
+		if(antialias) renderType = cutout ? WINDOW_CUTOUT_ANTIALIAS : WINDOW_TRANSLUCENT_ANTIALIAS;
 		else renderType = cutout ? WINDOW_CUTOUT : WINDOW_TRANSLUCENT;
 		collector.submitCustomGeometry(poseStack, renderType.apply(textureLocation), new WindowRenderInstance(tl, bl, br, tr, false, flipV));
 		

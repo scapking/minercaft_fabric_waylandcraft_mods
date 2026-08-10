@@ -188,11 +188,13 @@ public class WaylandCraft implements ClientModInitializer {
 	}
 	
 	public void renderWorld(LevelRenderContext ctx) {
-		if(bridge == null) return;
+		// 本地窗口需要 bridge（native）才能渲染；共享窗口走网络层数据，
+		// 不依赖本地 bridge —— Android 手机端（native 不可用）也能查看共享窗口。
+		if(bridge != null) {
+			displays.forEach((d) -> d.render(ctx));
+		}
 		
-		displays.forEach((d) -> d.render(ctx));
-		
-		// 渲染共享窗口
+		// 渲染共享窗口（网络层数据，bridge 为 null 时也必须渲染）
 		for(SharedWindowDisplay sharedDisplay : sharedDisplays) {
 			sharedDisplay.clampIfResized();
 			sharedDisplay.render(ctx);
