@@ -147,6 +147,10 @@ jobs:
         # created with PW_KEY_LOOP_CANCEL=true which our usage never sets, so stub it.
         sed -i 's/pthread_cancel(loop->thread);/\/\/ pthread_cancel unavailable on bionic; loop->cancel never set by waylandcraft/' \
           pipewire/src/pipewire/data-loop.c
+        # bionic pthread_setaffinity_np needs API 36 (we target API 30) and waylandcraft
+        # never sets CPU affinity; stub the call so pipewire still compiles.
+        sed -i 's/return -pthread_setaffinity_np(thread, sizeof(set), \&set);/return -ENOSYS; \/\/ bionic: pthread_setaffinity_np needs API 36, waylandcraft never uses affinity/' \
+          pipewire/src/pipewire/thread.c
         meson setup pipewire/build pipewire --cross-file /tmp/android-cross.ini \
           -Ddbus=disabled -Dpipewire-alsa=disabled -Dpipewire-jack=disabled \
           -Dflatpak=disabled -Dsnap=disabled \
