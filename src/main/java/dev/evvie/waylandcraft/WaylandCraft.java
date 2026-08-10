@@ -76,6 +76,10 @@ public class WaylandCraft implements ClientModInitializer {
 	public WaylandCraftBridge bridge = null;
 	public String waylandSocket = "";
 	
+	/** Set when the native bridge could not be initialized (e.g. Android launcher
+	 * with a bionic runtime); the mod disables itself instead of crashing. */
+	private boolean nativeDisabled = false;
+	
 	public ArrayList<WindowDisplay> displays = new ArrayList<WindowDisplay>();
 	
 	public boolean overridePickBlock = false;
@@ -150,14 +154,25 @@ public class WaylandCraft implements ClientModInitializer {
 	 * Called after game render in Minecraft::runTick
 	 */
 	public void update() {
+		if(bridge == null && !nativeDisabled) {
+			try {
+				bridge = WaylandCraftBridge.start();
+				waylandSocket = bridge.getSocket();
+				xdgManager = new XDGDesktopManager(this);
+				settingsManager = new WaylandCraftSettingsManager(this);
+				templateManager.init(Minecraft.getInstance().gameDirectory);
+				
+				WaylandCraftCommon.LOGGER.info("Server started on " + waylandSocket);
+			} catch (Throwable t) {
+				// Native library unavailable (e.g. Android launcher with a bionic
+				// runtime): disable the mod instead of crashing the game.
+				nativeDisabled = true;
+				WaylandCraftCommon.LOGGER.error("WaylandCraft native is unavailable, disabling mod: {}", t.toString());
+				return;
+			}
+		}
 		if(bridge == null) {
-			bridge = WaylandCraftBridge.start();
-			waylandSocket = bridge.getSocket();
-			xdgManager = new XDGDesktopManager(this);
-			settingsManager = new WaylandCraftSettingsManager(this);
-			templateManager.init(Minecraft.getInstance().gameDirectory);
-			
-			WaylandCraftCommon.LOGGER.info("Server started on " + waylandSocket);
+			return;
 		}
 		bridge.update();
 		

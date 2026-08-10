@@ -38,6 +38,7 @@ def resolve(name):
 os.makedirs(OUT, exist_ok=True)
 queue = needed(SO)
 seen = set()
+bundled = []
 while queue:
     name = queue.pop()
     if name in seen or name in EXCLUDE or name.startswith(EXCLUDE_PREFIX):
@@ -50,4 +51,13 @@ while queue:
     dest = os.path.join(OUT, name)
     shutil.copy2(path, dest)
     print(f"bundling {name} <- {path}")
+    bundled.append(name)
     queue.extend(needed(path))
+
+# Write a manifest listing the bundled SONAMEs. The Java side reads this file
+# (via getResourceAsStream) instead of enumerating the jar, because the code
+# source location is not reliably available inside Fabric's KnotClassLoader.
+manifest = os.path.join(OUT, "deps.list")
+with open(manifest, "w") as f:
+    f.write("\n".join(bundled) + "\n")
+print(f"manifest: {manifest} -> {bundled}")

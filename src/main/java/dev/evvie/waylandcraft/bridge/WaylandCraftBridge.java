@@ -1,13 +1,17 @@
 package dev.evvie.waylandcraft.bridge;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -44,6 +48,11 @@ public class WaylandCraftBridge {
 	private @Nullable Integer lastMoveRequestSerial = null;
 	private @Nullable ResizeRequest lastResizeRequest = null;
 	
+	/** False when the native library could not be loaded (e.g. Android launchers
+	 * with a bionic runtime). The mod then disables itself instead of crashing. */
+	private static boolean nativeAvailable = false;
+	public static boolean isNativeAvailable() { return nativeAvailable; }
+	
 	static {
 		boolean loaded = false;
 		InputStream inputStream = openNativeLibraryFromJar();
@@ -65,12 +74,26 @@ public class WaylandCraftBridge {
 				WaylandCraftCommon.LOGGER.info("Loaded native library from jar");
 			} catch (IOException e) {
 				e.printStackTrace();
+			} catch (UnsatisfiedLinkError e) {
+				WaylandCraftCommon.LOGGER.error("Native library is unavailable on this platform: {}", e.getMessage());
 			}
 		}
 		
 		if(!loaded) {
 			WaylandCraftCommon.LOGGER.info("Native library could not be loaded from jar. Attempting to load from system");
-			loadNativeLibrary(null);
+			try {
+				loadNativeLibrary(null);
+				loaded = true;
+			} catch (UnsatisfiedLinkError e) {
+				WaylandCraftCommon.LOGGER.error("Native library is unavailable on this platform: {}", e.getMessage());
+			}
+		}
+		
+		nativeAvailable = loaded;
+		if(!loaded) {
+			// Don't extract the satellite binary either: with no native bridge
+			// there is nothing to serve it. Game keeps running, mod disabled.
+			return;
 		}
 		
 		// 解压内嵌的 xwayland-satellite 二进制（如 jar 里带的话），
@@ -192,10 +215,13 @@ public class WaylandCraftBridge {
 	}
 	
 	/**
-	 * Extract and load the bundled native dependencies packaged under
-	 * /native-deps/&lt;linux-gnu-arch&gt;/. The libs are loaded in a dependency-safe
-	 * retry loop: a lib whose own deps aren't loaded yet simply fails and is
-	 * retried on the next pass. Returns true only if every bundled dep loaded.
+	 * Extract and load the bundled native dependencies listed in the manifest
+	 * /native-deps/&lt;linux-gnu-arch&gt;/deps.list (written by CI's collect_deps.py).
+	 * The libs are loaded in a dependency-safe retry loop: a lib whose own deps
+	 * aren't loaded yet simply fails and is retried on the next pass. Returns
+	 * true only if every bundled dep loaded. The manifest is read via
+	 * getResourceAsStream because the class's code source location is not
+	 * reliably available inside Fabric's KnotClassLoader.
 	 */
 	private static boolean loadBundledNativeDeps() {
 		String arch;
@@ -206,19 +232,35 @@ public class WaylandCraftBridge {
 		}
 		String resourceDir = "/native-deps/linux-gnu-" + arch + "/";
 		
-		List<String> resources = listNativeDeps(resourceDir);
-		if(resources.isEmpty()) {
-			WaylandCraftCommon.LOGGER.info("No bundled native dependencies under {}", resourceDir);
+		List<String> names = new ArrayList<String>();
+		try {
+			InputStream manifestStream = loadResource(resourceDir + "deps.list");
+			if(manifestStream == null) {
+				WaylandCraftCommon.LOGGER.info("No bundled native dependency manifest under {}", resourceDir);
+				return false;
+			}
+			BufferedReader reader = new BufferedReader(new InputStreamReader(manifestStream));
+			String line;
+			while((line = reader.readLine()) != null) {
+				line = line.trim();
+				if(!line.isEmpty()) names.add(line);
+			}
+			manifestStream.close();
+		} catch (IOException e) {
+			WaylandCraftCommon.LOGGER.warn("Failed to read bundled native dependency manifest: {}", e.toString());
+			return false;
+		}
+		if(names.isEmpty()) {
+			WaylandCraftCommon.LOGGER.info("Bundled native dependency manifest is empty");
 			return false;
 		}
 		
 		List<File> files = new ArrayList<File>();
-		for(String resource : resources) {
-			String name = resource.substring(resource.lastIndexOf('/') + 1);
+		for(String name : names) {
 			try {
-				InputStream inputStream = loadResource(resource);
+				InputStream inputStream = loadResource(resourceDir + name);
 				if(inputStream == null) {
-					WaylandCraftCommon.LOGGER.warn("Bundled native dep resource '{}' not found", resource);
+					WaylandCraftCommon.LOGGER.warn("Bundled native dep resource '{}' not found", resourceDir + name);
 					continue;
 				}
 				byte[] data = inputStream.readAllBytes();
@@ -240,6 +282,7 @@ public class WaylandCraftBridge {
 		if(files.isEmpty()) return false;
 		
 		List<File> remaining = new ArrayList<File>(files);
+		Map<String, String> errors = new HashMap<String, String>();
 		for(int pass = 0; pass <= remaining.size(); pass++) {
 			boolean progress = false;
 			Iterator<File> it = remaining.iterator();
@@ -252,59 +295,16 @@ public class WaylandCraftBridge {
 					progress = true;
 				} catch (UnsatisfiedLinkError e) {
 					// dependency not loaded yet; retry on the next pass
+					errors.put(f.getName(), e.getMessage());
 				}
 			}
 			if(remaining.isEmpty()) return true;
 			if(!progress) break;
 		}
 		for(File f : remaining) {
-			WaylandCraftCommon.LOGGER.warn("Could not load bundled native dependency {}", f.getAbsolutePath());
+			WaylandCraftCommon.LOGGER.warn("Could not load bundled native dependency {}: {}", f.getAbsolutePath(), errors.getOrDefault(f.getName(), "unknown error"));
 		}
 		return false;
-	}
-	
-	/**
-	 * List the resource paths under the given directory inside the mod jar
-	 * (or the class output dir in dev).
-	 */
-	private static List<String> listNativeDeps(String resourceDir) {
-		List<String> result = new ArrayList<String>();
-		try {
-			java.net.URL location = WaylandCraftBridge.class.getProtectionDomain().getCodeSource().getLocation();
-			if(location == null) return result;
-			String protocol = location.getProtocol();
-			if("jar".equals(protocol)) {
-				String path = location.getPath();
-				int bang = path.indexOf('!');
-				String jarPath = (bang >= 0 ? path.substring(0, bang) : path);
-				if(jarPath.startsWith("file:")) jarPath = jarPath.substring("file:".length());
-				try(java.util.jar.JarFile jarFile = new java.util.jar.JarFile(new File(jarPath))) {
-					String prefix = resourceDir.substring(1);
-					var entries = jarFile.entries();
-					while(entries.hasMoreElements()) {
-						var entry = entries.nextElement();
-						String name = entry.getName();
-						if(name.startsWith(prefix) && !entry.isDirectory()) {
-							result.add("/" + name);
-						}
-					}
-				}
-			} else if("file".equals(protocol)) {
-				File base = new File(location.toURI());
-				File dirFile = new File(base, resourceDir.substring(1).replace('/', File.separatorChar));
-				if(dirFile.isDirectory()) {
-					File[] children = dirFile.listFiles();
-					if(children != null) {
-						for(File child : children) {
-							if(child.isFile()) result.add(resourceDir + child.getName());
-						}
-					}
-				}
-			}
-		} catch (Exception e) {
-			WaylandCraftCommon.LOGGER.warn("Failed to list bundled native deps: {}", e.toString());
-		}
-		return result;
 	}
 	
 	private WaylandCraftBridge(long instance) {
@@ -312,6 +312,10 @@ public class WaylandCraftBridge {
 	}
 	
 	public static WaylandCraftBridge start() {
+		if(!nativeAvailable) {
+			throw new UnsatisfiedLinkError("waylandcraft native library is not available on this platform");
+		}
+		
 		long eglDisplay = GLFWNativeEGL.glfwGetEGLDisplay();
 		if(eglDisplay == 0) {
 			throw new RuntimeException("Failed to get EGL display!");
