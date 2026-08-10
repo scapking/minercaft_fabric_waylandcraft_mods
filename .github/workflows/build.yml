@@ -245,6 +245,8 @@ jobs:
         curl -sSLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
         unzip -q /tmp/ndk.zip -d /opt
         echo "NDK=/opt/android-ndk-r27c" >> "$GITHUB_ENV"
+        # put NDK clang on PATH so cc/build scripts can find <triple>-clang
+        echo "/opt/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
     - name: Download bionic deps
       uses: actions/download-artifact@v8
       with:
@@ -263,6 +265,9 @@ jobs:
         # bindgen (libspa-sys) must not pick up the host glibc headers when
         # cross-compiling: point it at the NDK bionic sysroot + android target.
         BINDGEN_EXTRA_CLANG_ARGS: --target=${{ matrix.target.rust_target }} --sysroot=${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+        # cc crate (libspa-sys C files) needs the android clang; give it the
+        # exact CC_<triple> name so it doesn't guess wrong.
+        CC_${{ matrix.target.rust_target }}: ${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.linker }}
         # cc-rs looks for "<target>-clang" but NDK only ships the API-suffixed
         # variant (e.g. x86_64-linux-android30-clang); give it the full path.
         CARGO_TARGET_${{ matrix.target.env_upper }}_CC: ${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.linker }}
