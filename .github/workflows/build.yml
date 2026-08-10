@@ -165,10 +165,10 @@ jobs:
         mkdir -p $PREFIX/lib/pkgconfig $PREFIX/include/xkbcommon \
                  $PREFIX/include/pipewire-0.3 $PREFIX/include/spa-0.2
         # libxkbcommon: library + headers (cross-built soname is libxkbcommon.so)
-        cp -P libxkbcommon/build/libxkbcommon.so* $PREFIX/lib/
+        cp -P $(find libxkbcommon/build -maxdepth 1 -name 'libxkbcommon.so*' ! -name '*.p') $PREFIX/lib/
         cp -r libxkbcommon/include/xkbcommon/* $PREFIX/include/xkbcommon/
         # pipewire: library + headers (+ extensions, protocol dirs)
-        cp -P pipewire/build/src/pipewire/libpipewire-0.3.so* $PREFIX/lib/
+        cp -P $(find pipewire/build/src/pipewire -maxdepth 1 -name 'libpipewire-0.3.so*' ! -name '*.p') $PREFIX/lib/
         cp -r pipewire/src/pipewire $PREFIX/include/pipewire-0.3/
         # spa headers
         cp -r pipewire/spa/include/spa $PREFIX/include/spa-0.2/
@@ -254,8 +254,8 @@ jobs:
         # Android cross-builds may not produce versioned symlinks (libxkbcommon.so
         # instead of libxkbcommon.so.0); copy whatever exists and create the .so.0
         # alias when missing so DT_NEEDED resolution works either way.
-        cp -P bionic/lib/libxkbcommon.so* native-libs/deps/ 2>/dev/null || true
-        cp -P bionic/lib/libpipewire-0.3.so* native-libs/deps/ 2>/dev/null || true
+        cp -P $(find bionic/lib -maxdepth 1 -name 'libxkbcommon.so*' ! -name '*.p') native-libs/deps/ 2>/dev/null || true
+        cp -P $(find bionic/lib -maxdepth 1 -name 'libpipewire-0.3.so*' ! -name '*.p') native-libs/deps/ 2>/dev/null || true
         ls native-libs/deps/
         if [ ! -e native-libs/deps/libxkbcommon.so.0 ] && [ -e native-libs/deps/libxkbcommon.so ]; then
           ln -s libxkbcommon.so native-libs/deps/libxkbcommon.so.0
