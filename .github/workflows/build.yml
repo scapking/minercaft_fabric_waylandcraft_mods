@@ -170,7 +170,8 @@ jobs:
         # pipewire: library + headers (+ extensions, protocol dirs)
         cp -P $(find pipewire/build/src/pipewire -maxdepth 1 -name 'libpipewire-0.3.so*' ! -name '*.p') $PREFIX/lib/
         cp -r pipewire/src/pipewire $PREFIX/include/pipewire-0.3/
-        # spa headers
+        # spa: library + headers (libspa-sys needs libspa-0.2.pc)
+        cp -P $(find pipewire/build/spa/lib -maxdepth 1 -name 'libspa.so*' ! -name '*.p') $PREFIX/lib/
         cp -r pipewire/spa/include/spa $PREFIX/include/spa-0.2/
         # pkg-config files (prefix resolved relative to the .pc location so the
         # bundle works wherever it lands in CI)
@@ -195,6 +196,17 @@ jobs:
         Version: 1.4.0
         Libs: -L${libdir} -lpipewire-0.3
         Cflags: -I${includedir}/pipewire-0.3 -I${includedir}/spa-0.2
+        EOF
+        cat > $PREFIX/lib/pkgconfig/libspa-0.2.pc <<'EOF'
+        prefix=${pcfiledir}/../..
+        libdir=${prefix}/lib
+        includedir=${prefix}/include
+
+        Name: libspa
+        Description: Simple Plugin API
+        Version: 0.2
+        Libs: -L${libdir} -lspa
+        Cflags: -I${includedir}/spa-0.2
         EOF
         echo "--- bundle ---"
         find $PREFIX -type f -o -type l | sort
@@ -256,6 +268,7 @@ jobs:
         # alias when missing so DT_NEEDED resolution works either way.
         cp -P $(find bionic/lib -maxdepth 1 -name 'libxkbcommon.so*' ! -name '*.p') native-libs/deps/ 2>/dev/null || true
         cp -P $(find bionic/lib -maxdepth 1 -name 'libpipewire-0.3.so*' ! -name '*.p') native-libs/deps/ 2>/dev/null || true
+        cp -P $(find bionic/lib -maxdepth 1 -name 'libspa.so*' ! -name '*.p') native-libs/deps/ 2>/dev/null || true
         ls native-libs/deps/
         if [ ! -e native-libs/deps/libxkbcommon.so.0 ] && [ -e native-libs/deps/libxkbcommon.so ]; then
           ln -s libxkbcommon.so native-libs/deps/libxkbcommon.so.0
@@ -263,7 +276,10 @@ jobs:
         if [ ! -e native-libs/deps/libpipewire-0.3.so.0 ] && [ -e native-libs/deps/libpipewire-0.3.so ]; then
           ln -s libpipewire-0.3.so native-libs/deps/libpipewire-0.3.so.0
         fi
-        printf 'libxkbcommon.so.0\nlibpipewire-0.3.so.0\n' > native-libs/deps/deps.list
+        if [ ! -e native-libs/deps/libspa.so.0 ] && [ -e native-libs/deps/libspa.so ]; then
+          ln -s libspa.so native-libs/deps/libspa.so.0
+        fi
+        printf 'libxkbcommon.so.0\nlibpipewire-0.3.so.0\nlibspa.so.0\n' > native-libs/deps/deps.list
         echo "--- native-libs ---"
         ls -la native-libs/ native-libs/deps/
         file native-libs/*.so native-libs/deps/*.so || true
