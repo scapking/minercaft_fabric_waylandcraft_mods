@@ -113,7 +113,7 @@ jobs:
         git clone --depth 1 --branch xkbcommon-1.7.0 https://github.com/xkbcommon/libxkbcommon.git
         meson setup libxkbcommon/build libxkbcommon --cross-file /tmp/android-cross.ini \
           -Denable-x11=false -Denable-wayland=false -Denable-docs=false \
-          -Denable-tools=false -Denable-bash-completion=false
+          -Denable-tools=false -Denable-bash-completion=false -Denable-xkbregistry=false
         ninja -C libxkbcommon/build
         ls -la libxkbcommon/build/libxkbcommon.so*
     - name: Build libpipewire (bionic)
