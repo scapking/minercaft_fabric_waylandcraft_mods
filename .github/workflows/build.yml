@@ -54,11 +54,20 @@ jobs:
         mkdir native-libs
         mv native/target/${{ matrix.platform.target }}/release/libwaylandcraft.so \
           native-libs/libwaylandcraft-${{ matrix.platform.name }}.so
+    - name: Collect runtime shared library dependencies
+      # Copy the non-glibc .so dependencies (libxkbcommon/libpipewire/...) next to
+      # the native lib. Stripped runtimes such as the OnyxLauncher Android JRE have
+      # glibc but no libxkbcommon.so.0 / libpipewire-0.3.so.0; bundling them lets
+      # the Java side preload them before loading libwaylandcraft.so.
+      run: |
+        python3 scripts/collect_deps.py native-libs/libwaylandcraft-${{ matrix.platform.name }}.so
+        echo "--- bundled deps ---"
+        ls -la native-libs/deps/ || true
     - name: Upload artifact
       uses: actions/upload-artifact@v7
       with:
         name: libwaylandcraft-${{ matrix.platform.name }}
-        path: native-libs/libwaylandcraft-${{ matrix.platform.name }}.so
+        path: native-libs/
         if-no-files-found: error
 
   build-java:
@@ -80,7 +89,8 @@ jobs:
     - name: Verify native lib
       run: |
         ls -la native-libs/
-        file native-libs/*.so || true
+        ls -la native-libs/deps/ || true
+        file native-libs/*.so native-libs/deps/*.so || true
     - name: Set up JDK 25
       uses: actions/setup-java@v5
       with:

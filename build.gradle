@@ -114,6 +114,18 @@ jar {
 			from(f)
 		})
 		natives.add("${target}")
+
+		// Bundle the .so runtime dependencies (libxkbcommon/libpipewire/...) that CI
+		// collected next to the native lib. On stripped runtimes (e.g. Android
+		// launchers) these are missing from the system, so the Java side preloads
+		// them from /native-deps/<target>/ before loading libwaylandcraft.so.
+		def depsDir = file("native-libs/deps")
+		if(depsDir.exists()) {
+			with(copySpec {
+				from(depsDir)
+				into("native-deps/${target}")
+			})
+		}
 	}
 
 	// Bundled xwayland-satellite binaries (built by native/build-satellite.sh)

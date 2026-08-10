@@ -1,5 +1,6 @@
 # Build output
 build/
+native-libs/
 *.class
 META-INF/
 dev/
