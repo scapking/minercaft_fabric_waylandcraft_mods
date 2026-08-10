@@ -120,7 +120,7 @@ jobs:
       run: |
         git clone --depth 1 --branch 1.4.0 https://gitlab.freedesktop.org/pipewire/pipewire.git
         meson setup pipewire/build pipewire --cross-file /tmp/android-cross.ini \
-          -Ddbus=disabled -Dpipewire-alsa=disabled -Dpipewire-jack=disabled -Dpipewire-pulse=disabled \
+          -Ddbus=disabled -Dpipewire-alsa=disabled -Dpipewire-jack=disabled \
           -Dudev=disabled -Dsystemd=disabled -Dsession-managers=disabled -Dgstreamer=disabled \
           -Dtests=disabled -Dexamples=disabled -Ddocs=disabled -Dman=disabled -Dspa-plugins=disabled \
           -Dalsa=disabled -Djack=disabled -Dsndfile=disabled -Dv4l2=disabled
