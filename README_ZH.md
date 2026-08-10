@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.19-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.26-brightgreen" />
 </p>
 
 ---
 
 ## 下载
 
-👉 **[最新 Release(v0.2.19)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
+👉 **[最新 Release(v0.2.26)](https://github.com/scapking/waylandcraft/releases/latest)** — 下载 `waylandcraft.jar`，放入 `mods/` 文件夹即可。
 
 > 上游仓库（almightydb）的 Releases 页面同步滞后，如需最新版本请从上述链接获取。
 
@@ -65,6 +65,7 @@
 2. 将 `waylandcraft.jar` 放入 `.minecraft/mods/`
 3. **多人游戏：服务端也必须安装本 mod**（`give` 物品发放、权限管理、共享窗口等逻辑注册在服务端；服务端未装 mod 时这些功能不生效——例如 `/wl give` 会静默失败）
 4. 启动游戏（单人世界即内置服务器，客户端服务端共用 `mods/` 目录即可）
+5. **Android 手机端（纯查看）**：安装 `waylandcraft-android-<arch>.jar`（无本地 Wayland 时自动禁用本地功能，不会崩溃）。加入装有本 mod 的服务器后，可**直接看到电脑队友共享的窗口**（`/wl share start <handle>` 由电脑端发起，手机端无需任何额外操作）
 
 ---
 

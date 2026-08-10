@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.19-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.26-brightgreen" />
 </p>
 
 ---
 
 ## ダウンロード
 
-👉 **[最新リリース (v0.2.19)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
+👉 **[最新リリース (v0.2.26)](https://github.com/scapking/waylandcraft/releases/latest)** — `waylandcraft.jar` をダウンロードして `mods/` フォルダに入れてください。
 
 > 上流リポジトリ（almightydb）の Releases ページは更新が遅れています。最新版は上記リンクから取得してください。
 
@@ -65,6 +65,7 @@
 2. `waylandcraft.jar` を `.minecraft/mods/` に配置
 3. **マルチプレイの場合、サーバー側にも mod の導入が必要**（`give` / `permission` / `share` はサーバー側に登録されており、未導入だと `/wl give` などが静かに失敗します）
 4. ゲームを起動（シングルプレイのワールドは内蔵サーバーで、クライアントとサーバーで `mods/` を共用します）
+5. **Android（閲覧専用）**：`waylandcraft-android-<arch>.jar` を導入（ネイティブ Wayland が無い場合はローカル機能が自動無効化され、クラッシュしません）。この mod が入ったサーバーに参加すると、デスクトップ側のプレイヤーが共有したウィンドウ（`/wl share start <handle>`）をそのまま表示できます
 
 ---
 

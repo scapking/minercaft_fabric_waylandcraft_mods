@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Fabric%20Loader-0.19.2+-blue" />
   <img src="https://img.shields.io/badge/Fabric%20API-0.147.0%2B-blue" />
   <img src="https://img.shields.io/badge/Java-25-orange" />
-  <img src="https://img.shields.io/badge/Version-v0.2.19-brightgreen" />
+  <img src="https://img.shields.io/badge/Version-v0.2.26-brightgreen" />
 </p>
 
 ---
 
 ## Download
 
-👉 **[Latest Release (v0.2.19)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
+👉 **[Latest Release (v0.2.26)](https://github.com/scapking/waylandcraft/releases/latest)** — Download `waylandcraft.jar` and drop it into your `mods/` folder.
 
 > The upstream repository (almightydb) Releases page lags behind; grab the latest build from the link above.
 
@@ -65,6 +65,7 @@
 2. Put `waylandcraft.jar` into `.minecraft/mods/`
 3. **Multi-player: the mod must also be installed on the server** (`give`, `permission`, `share` logic is registered server-side; without it these features silently fail — e.g. `/wl give` does nothing)
 4. Launch the game (a single-player world is a built-in server; client and server share the same `mods/` folder)
+5. **Android (viewer-only)**: install `waylandcraft-android-<arch>.jar` (local features auto-disable when no native Wayland is available — it never crashes). Join any server running this mod and you'll see windows shared by desktop teammates (`/wl share start <handle>` is initiated by the desktop player; the phone needs no extra steps)
 
 ---
 
