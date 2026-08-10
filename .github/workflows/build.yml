@@ -96,12 +96,31 @@ jobs:
         echo "NDK=/opt/android-ndk-r27c" >> "$GITHUB_ENV"
     - name: Write meson cross file
       run: |
+        # bionic (Android) has no libintl (gettext). Provide a no-op stub header
+        # so pipewire can compile; translations are irrelevant on Android.
+        mkdir -p /tmp/bionic-stub
+        cat > /tmp/bionic-stub/libintl.h <<'EOF'
+        #ifndef LIBINTL_STUB_H
+        #define LIBINTL_STUB_H
+        #define _(String) (String)
+        #define N_(String) (String)
+        #define gettext(msgid) (msgid)
+        #define dgettext(domainname, msgid) (msgid)
+        #define dngettext(domainname, msgid, msgid_plural, n) ((n) == 1 ? (msgid) : (msgid_plural))
+        #define textdomain(domainname) ((char*)(domainname))
+        #define bindtextdomain(domainname, dirname) ((char*)(domainname))
+        #define bind_textdomain_codeset(domainname, codeset) ((char*)(codeset))
+        #endif
+        EOF
         cat > /tmp/android-cross.ini <<EOF
         [binaries]
         c = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.ndk_clang }}'
         cpp = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.target.ndk_clang }}++'
         ar = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar'
         strip = '${{ env.NDK }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip'
+        [built-in options]
+        c_args = ['-I/tmp/bionic-stub']
+        cpp_args = ['-I/tmp/bionic-stub']
         [host_machine]
         system = 'android'
         cpu_family = '${{ matrix.target.cpu_family }}'
