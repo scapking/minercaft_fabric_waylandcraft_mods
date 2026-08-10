@@ -70,7 +70,9 @@ public class WindowShareManager {
 		// 默认全分辨率高质量（scale=1.0, quality=0.85, fps=20）：
 		// 之前默认 0.5 缩放 + JPEG 0.7 导致接收端画面明显比本地模糊。
 		// fps 保持 20 控制手机端解码负担；带宽不限（局域网/服务器转发通常充裕）。
-		this.captureConfig = new ImageCapture.CaptureConfig(1.0f, 0.85f, 20);
+		// 少部分人使用、不考虑带宽：全分辨率 + 最高 JPEG 质量，与本地共享端视觉一致。
+		// maxBitrate=0（不限速）→ evaluateAdaptiveQuality 自动禁用，quality 永不降。
+		this.captureConfig = new ImageCapture.CaptureConfig(1.0f, 1.0f, 20);
 		this.frameRateController = new FrameRateController();
 		this.diffUpdateManager = new DiffUpdateManager();
 		
@@ -126,6 +128,8 @@ public class WindowShareManager {
 		diffUpdateManager.clearWindow(windowHandle);
 		frameRateController.reset(windowHandle);
 		ImageCapture.clearDiffCache(windowHandle);
+		ImageCapture.cleanupPbo(windowHandle);
+		ImageCapture.cleanupScaleFbo(windowHandle);
 		
 		LOGGER.info("Stopped sharing window 0x{}", Long.toHexString(windowHandle));
 		return true;
@@ -169,7 +173,7 @@ public class WindowShareManager {
 		
 		// === 像素差异检测 ===
 		if(effectiveConfig.diffUpdate) {
-			byte[] rawFrame = ImageCapture.captureFromFramebufferRaw(toplevel.framebuffer, effectiveScale);
+			byte[] rawFrame = ImageCapture.captureFromFramebufferRaw(state.windowHandle, toplevel.framebuffer, effectiveScale);
 			if(rawFrame != null) {
 				if(!ImageCapture.hasSignificantChange(state.windowHandle, rawFrame, effectiveConfig.diffThreshold)) {
 					// 无显著变化，跳过本帧
@@ -187,8 +191,9 @@ public class WindowShareManager {
 			// rawFrame == null（捕获失败）：不跳过，继续走完整 JPEG 路径发送
 		}
 		
-		// === 捕获（使用优化的PBO+GPU缩放+直接编码路径） ===
+		// === 捕获（使用优化的PBO+GPU缩放+直接编码路径，PBO/FBO 按窗口隔离） ===
 		byte[] imageData = ImageCapture.captureFromFramebuffer(
+			state.windowHandle,
 			toplevel.framebuffer,
 			effectiveScale,
 			effectiveConfig.quality
@@ -325,6 +330,7 @@ public class WindowShareManager {
 		adaptiveScaleMultiplier = 1.0f;
 		bytesSentThisSecond = 0;
 		ImageCapture.clearAllDiffCaches();
+		ImageCapture.cleanupAllWindowResources();
 		LOGGER.info("Cleared all share states due to disconnect");
 	}
 	
