@@ -119,6 +119,11 @@ jobs:
     - name: Build libpipewire (bionic)
       run: |
         git clone --depth 1 --branch 1.4.0 https://gitlab.freedesktop.org/pipewire/pipewire.git
+        # pipewire 1.4.0 bug: module-echo-cancel references plugin_dependencies which
+        # is only defined by spa/plugins/filter-graph; with -Dspa-plugins=disabled the
+        # variable is undefined. We don't need echo-cancel, so drop the reference.
+        sed -i 's/dependencies : \[mathlib, dl_lib, pipewire_dep, plugin_dependencies\],/dependencies : [mathlib, dl_lib, pipewire_dep],/' \
+          pipewire/src/modules/meson.build
         meson setup pipewire/build pipewire --cross-file /tmp/android-cross.ini \
           -Ddbus=disabled -Dpipewire-alsa=disabled -Dpipewire-jack=disabled \
           -Dflatpak=disabled -Dsnap=disabled \
