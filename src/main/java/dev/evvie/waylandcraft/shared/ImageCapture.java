@@ -55,6 +55,12 @@ public class ImageCapture {
 	// 异步阶段 map 到的会是另一个窗口写入的数据，导致画面串扰：
 	// 表现为"共享多个窗口时只显示最新的"。每窗口独立 PBO/seed 状态后互不影响。）
 	private static final java.util.Map<Long, PboState> pboStates = new java.util.concurrent.ConcurrentHashMap<>();
+	
+	// PBO 连续失败计数（按窗口）：Mesa/EGL（xwayland-satellite + wayland）下
+	// glGenBuffers 可能持续返回 0。连续失败超过阈值后永久降级 sync read，
+	// 避免每帧都重复 glGenBuffers + 刷屏告警（v0.2.30）。
+	private static final int PBO_MAX_CONSECUTIVE_FAILURES = 3;
+	private static final java.util.Map<Long, Integer> pboFailures = new java.util.concurrent.ConcurrentHashMap<>();
 	// GPU缩放用临时FBO+纹理（按窗口句柄隔离 — 避免多窗口尺寸不同时每帧重建 FBO 卡顿）
 	private static final java.util.Map<Long, ScaleState> scaleStates = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -404,6 +410,12 @@ public class ImageCapture {
 	private static ByteBuffer readPixelsViaPbo(long windowHandle, int width, int height) {
 		int dataSize = width * height * 4;
 		
+		// 永久降级检查：该窗口已连续失败过阈值次数，直接走 sync，不再尝试 PBO
+		Integer failCount = pboFailures.get(windowHandle);
+		if(failCount != null && failCount >= PBO_MAX_CONSECUTIVE_FAILURES) {
+			return readPixelsSync(windowHandle, width, height);
+		}
+		
 		PboState state = pboStates.computeIfAbsent(windowHandle, k -> new PboState());
 		
 		// 初始化PBO（首次或尺寸变化时）
@@ -413,10 +425,17 @@ public class ImageCapture {
 			IntBuffer pboBuf = IntBuffer.wrap(state.ids);
 			GL15.glGenBuffers(pboBuf);
 			
-			// Mesa/EGL 下 glGenBuffers 可能失败返回 0 —— 检测到无效 ID 直接降级 sync
+			// Mesa/EGL 下 glGenBuffers 可能失败返回 0 —— 检测到无效 ID 直接降级 sync；
+			// 连续失败 PBO_MAX_CONSECUTIVE_FAILURES 次后永久降级，不再每帧重试。
 			if(state.ids[0] == 0 || state.ids[1] == 0) {
-				LOGGER.warn("glGenBuffers returned invalid PBO ids ({}), falling back to sync read", 
-					state.ids[0] + "," + state.ids[1]);
+				int failures = pboFailures.merge(windowHandle, 1, Integer::sum);
+				if(failures >= PBO_MAX_CONSECUTIVE_FAILURES) {
+					LOGGER.warn("PBO disabled for window 0x{} after {} consecutive failures, using sync read permanently",
+						Long.toHexString(windowHandle), failures);
+				} else {
+					LOGGER.warn("glGenBuffers returned invalid PBO ids ({}), falling back to sync read (failure {}/{})",
+						state.ids[0] + "," + state.ids[1], failures, PBO_MAX_CONSECUTIVE_FAILURES);
+				}
 				state.ids = null;
 				return readPixelsSync(windowHandle, width, height);
 			}
@@ -434,10 +453,17 @@ public class ImageCapture {
 			}
 			GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
 			if(!pboAllocOk) {
+				int failures = pboFailures.merge(windowHandle, 1, Integer::sum);
+				if(failures >= PBO_MAX_CONSECUTIVE_FAILURES) {
+					LOGGER.warn("PBO disabled for window 0x{} after {} consecutive failures, using sync read permanently",
+						Long.toHexString(windowHandle), failures);
+				}
 				state.cleanup();
 				return readPixelsSync(windowHandle, width, height);
 			}
 			
+			// PBO 初始化成功：清除失败计数（环境可能已恢复）
+			pboFailures.remove(windowHandle);
 			state.width = width;
 			state.height = height;
 			// index = 1 让首次 mapIndex=0 必然走 sync（map 未初始化 PBO 拿到全 0/乱码）
@@ -901,9 +927,14 @@ public class ImageCapture {
 		public float diffThreshold;  // 新增：像素变化阈值
 		
 		// === JPEG 大小保护（发送端自动降级） ===
-		// 默认参数：上限 1.8MB（低于 MC CustomPacketPayload 约 2MB 包上限，留出余量），
+		// 默认参数：上限 600KB（v0.2.30 收紧自 1.8MB —— 弱服务器上 450KB+ 大帧的
+		// netty/GC 压力会拖垮服务端 tick；600KB 对 1080p 文本窗口在 quality=0.85
+		// 下通常 300KB 左右，正常内容不会触发降级，只有超大/超复杂窗口才降），
 		// 最多降 2 轮：先降 quality（1.0 → 0.85 → 0.7），仍超限再降 scale（1.0 → 0.75 → 0.5）。
-		public static final long DEFAULT_MAX_JPEG_BYTES = 1_800_000L;
+		// 注意：WindowShareManager 的"降级只降 quality 不降 scale"是 UI 大小底线，
+		// 与这里的 scale 阶梯并不冲突 —— captureFrameWithSizeProtection 传参时
+		// scale 被冻结为 effectiveScale，实际运行时不会走 scale 阶梯。
+		public static final long DEFAULT_MAX_JPEG_BYTES = 600_000L;
 		public static final int DEFAULT_MAX_DEGRADE_ROUNDS = 2;
 		public static final float[] DEFAULT_JPEG_QUALITY_LADDER = {1.0f, 0.85f, 0.7f};
 		public static final float[] DEFAULT_JPEG_SCALE_LADDER = {1.0f, 0.75f, 0.5f};

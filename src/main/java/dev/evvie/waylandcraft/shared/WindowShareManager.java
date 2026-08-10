@@ -71,12 +71,14 @@ public class WindowShareManager {
 	public WindowShareManager(WaylandCraft clientMod) {
 		this.clientMod = clientMod;
 		this.serverMod = null;
-		// 默认全分辨率高质量（scale=1.0, quality=0.85, fps=20）：
-		// 之前默认 0.5 缩放 + JPEG 0.7 导致接收端画面明显比本地模糊。
-		// fps 保持 20 控制手机端解码负担；带宽不限（局域网/服务器转发通常充裕）。
-		// 少部分人使用、不考虑带宽：全分辨率 + 最高 JPEG 质量，与本地共享端视觉一致。
-		// maxBitrate=0（不限速）→ evaluateAdaptiveQuality 自动禁用，quality 永不降。
-		this.captureConfig = new ImageCapture.CaptureConfig(1.0f, 1.0f, 20);
+		// 默认全分辨率 + 高质量（scale=1.0, quality=0.85, fps=10）：
+		// - scale=1.0：UI 大小与共享端完全一致（底线，绝不动）。
+		// - quality=0.85：内容画质足够（0.85 vs 1.0 视觉几乎无差），
+		//   单帧体积约 300-350KB（quality=1.0 时 450KB+），显著降低
+		//   服务端/查看端的 GC 与解码压力（v0.2.30 实测弱服务器被大帧拖垮）。
+		// - fps=10：丢帧在底线允许范围内；弱服务器 + 手机端解码都更从容。
+		// maxBitrate=0（不限速）→ evaluateAdaptiveQuality 自动禁用。
+		this.captureConfig = new ImageCapture.CaptureConfig(1.0f, 0.85f, 10);
 		this.frameRateController = new FrameRateController();
 		this.diffUpdateManager = new DiffUpdateManager();
 		
