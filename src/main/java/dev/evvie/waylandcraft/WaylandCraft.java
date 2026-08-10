@@ -200,6 +200,7 @@ public class WaylandCraft implements ClientModInitializer {
 	}
 	
 	public void updateWorld(LevelExtractionContext ctx) {
+		if(bridge == null) return; // native disabled (e.g. Android launcher): stay inert, never crash
 		for(WLCPopup popup : bridge.getMappedPopups()) {
 			WLCAbstractWindow root = popup;
 			while((root = ((WLCPopup) root).getParent()) instanceof WLCPopup);
@@ -287,6 +288,7 @@ public class WaylandCraft implements ClientModInitializer {
 	}
 	
 	public void enableKeyboardCapture(boolean hardCapture) {
+		if(bridge == null) return; // native disabled: no bridge to activate
 		if(keyboardCaptureMode != KeyboardCaptureMode.NONE) return;
 		
 		keyboardCaptureMode = hardCapture ? KeyboardCaptureMode.HARD_CAPTURE : KeyboardCaptureMode.CAPTURE;
@@ -294,6 +296,7 @@ public class WaylandCraft implements ClientModInitializer {
 	}
 	
 	public void disableKeyboardCapture() {
+		if(bridge == null) return;
 		if(keyboardCaptureMode == KeyboardCaptureMode.NONE) return;
 		
 		keyboardCaptureMode = KeyboardCaptureMode.NONE;
@@ -305,6 +308,10 @@ public class WaylandCraft implements ClientModInitializer {
 		if(minecraft.player == null) return;
 		
 		if(keyOpenScreen.consumeClick()) {
+			if(bridge == null) {
+				minecraft.getChatListener().handleSystemMessage(Component.literal("WaylandCraft native unavailable on this platform; mod disabled"), false);
+				return;
+			}
 			keyboardCaptureMode = KeyboardCaptureMode.NONE;
 			pointerGrabs.releaseAll();
 			minecraft.setScreen(new WindowManagerScreen(WaylandCraft.instance));
@@ -312,12 +319,19 @@ public class WaylandCraft implements ClientModInitializer {
 		}
 		
 		if(keyCaptureKeyboard.consumeClick()) {
+			if(bridge == null) return;
 			enableKeyboardCapture(false);
 			return;
 		}
 	}
 	
 	private void onClientJoin(ClientPacketListener listener, PacketSender sender, Minecraft minecraft) {
+		if(bridge == null) {
+			// Native library unavailable (e.g. Android launcher): never pretend the
+			// compositor is running and never dereference the null bridge.
+			minecraft.getChatListener().handleSystemMessage(Component.literal("WaylandCraft native unavailable on this platform; mod disabled"), false);
+			return;
+		}
 		minecraft.getChatListener().handleSystemMessage(Component.literal("Wayland compositor running on " + waylandSocket), false);
 		itemManager.giveItemsIfMissing(bridge.getMappedToplevels());
 	}
@@ -325,6 +339,7 @@ public class WaylandCraft implements ClientModInitializer {
 	@Nullable
 	public static WLCToplevel getToplevel(ItemStack item) {
 		if(item == null) return null;
+		if(WaylandCraft.instance == null || WaylandCraft.instance.bridge == null) return null;
 		
 		Long data = item.get(WindowItem.WINDOW_HANDLE);
 		if(data == null) return null;

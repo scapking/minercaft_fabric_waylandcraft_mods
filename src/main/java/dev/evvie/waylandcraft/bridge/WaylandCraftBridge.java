@@ -153,14 +153,31 @@ public class WaylandCraftBridge {
 		return WaylandCraftBridge.class.getResourceAsStream(path);
 	}
 	
+	/** Detect the Android runtime (bionic libc). The JVM reports os.name "Linux",
+	 * so we probe for the canonical Android marker file instead. */
+	private static boolean isAndroid() {
+		try {
+			return new File("/system/build.prop").exists();
+		} catch (Throwable t) {
+			return false;
+		}
+	}
+	
+	/** Native lib name platform component, e.g. "linux-gnu" or "android". */
+	private static String nativePlatform() {
+		return isAndroid() ? "android" : "linux-gnu";
+	}
+	
 	private static InputStream openNativeLibraryFromJar() {
 		InputStream stream = null;
 		
 		/* Attempt to load the architecture-specific release library first.
 		 * A jar may contain multiple builds (libwaylandcraft-linux-gnu-x86_64.so /
-		 * libwaylandcraft-linux-gnu-arm64.so); the unqualified /libwaylandcraft.so
-		 * is only the build host's library and must NOT be preferred, otherwise
-		 * an arm64 device will try to load an x86_64 build. */
+		 * libwaylandcraft-linux-gnu-arm64.so / libwaylandcraft-android-*.so); the
+		 * unqualified /libwaylandcraft.so is only the build host's library and must
+		 * NOT be preferred, otherwise an arm64 device will try to load an x86_64
+		 * build. On Android (bionic) we prefer the android build; on desktop the
+		 * linux-gnu build. */
 		String arch;
 		switch(Platform.getArchitecture()) {
 		case X64: arch = "x86_64"; break;
@@ -169,8 +186,14 @@ public class WaylandCraftBridge {
 		}
 		
 		if(arch != null) {
-			String platform = "linux-gnu-" + arch;
+			String platform = nativePlatform() + "-" + arch;
 			stream = loadResource("/libwaylandcraft-" + platform + ".so");
+			if(stream != null) return stream;
+			
+			// Fall back to the other platform's build (e.g. an android jar running
+			// in an emulator that reports linux-gnu, or a linux jar on android).
+			String otherPlatform = (isAndroid() ? "linux-gnu" : "android") + "-" + arch;
+			stream = loadResource("/libwaylandcraft-" + otherPlatform + ".so");
 			if(stream != null) return stream;
 		}
 		
@@ -227,11 +250,17 @@ public class WaylandCraftBridge {
 		case ARM64: arch = "arm64"; break;
 		default: return false;
 		}
-		String resourceDir = "/native-deps/linux-gnu-" + arch + "/";
+		// On Android (bionic) prefer the android bundle (built against bionic libc);
+		// fall back to the linux-gnu bundle for jars that only ship glibc deps.
+		String resourceDir = "/native-deps/" + nativePlatform() + "-" + arch + "/";
+		InputStream manifestStream = loadResource(resourceDir + "deps.list");
+		if(manifestStream == null && isAndroid()) {
+			resourceDir = "/native-deps/linux-gnu-" + arch + "/";
+			manifestStream = loadResource(resourceDir + "deps.list");
+		}
 		
 		List<String> names = new ArrayList<String>();
 		try {
-			InputStream manifestStream = loadResource(resourceDir + "deps.list");
 			if(manifestStream == null) {
 				WaylandCraftCommon.LOGGER.info("No bundled native dependency manifest under {}", resourceDir);
 				return false;

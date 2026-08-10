@@ -61,6 +61,7 @@ public class WaylandHudRenderer {
 	}
 	
 	private void extractDNDIconRenderState(GuiGraphicsExtractor context, DeltaTracker tracker) {
+		if(wlc == null || wlc.bridge == null) return; // native disabled: no DND icon
 		int guiScale = (int) Minecraft.getInstance().getWindow().getGuiScale();
 		
 		IconSurface dndIcon = wlc.bridge.dndIcon;
