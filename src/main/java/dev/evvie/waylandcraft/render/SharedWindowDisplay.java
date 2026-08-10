@@ -42,6 +42,10 @@ public class SharedWindowDisplay {
 	private int geometryWidth;
 	private int geometryHeight;
 	
+	// 发送端自己的 pixelsPerBlock（0=未收到，退回本地设置）：
+	// 共享窗口必须用发送端的 PPB 渲染，否则两端 PPB 不同 → 世界尺寸不同
+	private int senderPixelsPerBlock = 0;
+	
 	// framebuffer 内容偏移（与本地 WindowDisplay.render 的 xoff/yoff 语义一致）
 	private int xoff;
 	private int yoff;
@@ -177,10 +181,18 @@ public class SharedWindowDisplay {
 	}
 	
 	/**
-	 * 获取像素缩放比例 — 与WindowDisplay一致，读取用户设置
-	 * （native 不可用的纯查看端 settings 可能为 null，退回默认 500 ppb）
+	 * 设置发送端 pixelsPerBlock（来自 ImagePayload），接收端用它渲染保证尺寸一致
+	 */
+	public void setSenderPixelsPerBlock(int ppb) {
+		if(ppb > 0) this.senderPixelsPerBlock = ppb;
+	}
+	
+	/**
+	 * 获取像素缩放比例 — 优先用发送端 PPB（保证共享窗口世界尺寸与发送端一致），
+	 * 未收到时退回本地设置；native 不可用的纯查看端 settings 可能为 null，退回默认 500 ppb
 	 */
 	public float pixelScale() {
+		if(senderPixelsPerBlock > 0) return 1.0f / senderPixelsPerBlock;
 		var s = WaylandCraft.instance.settings;
 		return 1.0f / (s != null ? s.getPixelsPerBlock() : 500);
 	}
@@ -255,37 +267,21 @@ public class SharedWindowDisplay {
 	}
 	
 	/**
-	 * 垂直约束：与本地 WindowDisplay.clampVertical() 一致 —
-	 * 法线水平化、down=(0,-1,0)、窗口底部不低于地面 GROUND_CLEARANCE 格。
+	 * 垂直约束 — 共享窗口不执行！
+	 * 发送端本地 WindowDisplay 每帧已做垂直钳制，传过来的 pivot/normal/down
+	 * 就是钳制后的最终摆放。接收端若再钳制一次，会把发送端贴在墙/天花板
+	 * 或任意角度摆放的窗口强制拉回竖直+贴地 → x/y/z 与本地不一致。
 	 */
 	public void clampVertical() {
-		Vec3 horiz = new Vec3(normal.x, 0, normal.z);
-		if(horiz.lengthSqr() < 1e-6) horiz = new Vec3(0, 0, 1);
-		this.normal = horiz.normalize();
-		this.down = new Vec3(0, -1, 0);
-		
-		net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-		if(mc.level != null) {
-			int w = geometryWidth > 0 ? geometryWidth : width;
-			int h = geometryHeight > 0 ? geometryHeight : height;
-			int groundY = mc.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, (int) Math.floor(pivot.x), (int) Math.floor(pivot.z));
-			double halfHeight = (h / 2.0) * pixelScale() * viewScale;
-			double minY = groundY + GROUND_CLEARANCE + halfHeight;
-			if(pivot.y < minY) pivot = new Vec3(pivot.x, minY, pivot.z);
-		}
+		// no-op：共享窗口位置/朝向完全由发送端决定
 	}
 	
 	/**
 	 * 窗口分辨率变化后自动重新执行垂直钳制（尺寸变化才触发）。
+	 * no-op：共享窗口不钳制，见 clampVertical()。
 	 */
 	public void clampIfResized() {
-		int w = geometryWidth > 0 ? geometryWidth : width;
-		int h = geometryHeight > 0 ? geometryHeight : height;
-		if(w != lastClampWidth || h != lastClampHeight) {
-			lastClampWidth = w;
-			lastClampHeight = h;
-			clampVertical();
-		}
+		// no-op：共享窗口位置/朝向完全由发送端决定
 	}
 	
 	/**

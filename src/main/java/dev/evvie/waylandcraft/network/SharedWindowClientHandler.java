@@ -154,6 +154,9 @@ public class SharedWindowClientHandler {
 		info.updateViewScale(payload.viewScale());
 		info.updateGeometrySize(payload.geometryWidth(), payload.geometryHeight());
 		
+		// 同步发送端 pixelsPerBlock（接收端用它渲染，保证世界尺寸与发送端一致）
+		info.setSenderPixelsPerBlock(payload.senderPixelsPerBlock());
+		
 		// 更新RemoteWindowRenderer
 		WaylandCraft instance = WaylandCraft.instance;
 		if(instance != null && instance.remoteWindowRenderer != null) {
@@ -231,6 +234,8 @@ public class SharedWindowClientHandler {
 				// 传递视觉缩放与 geometry 尺寸（与本地 WindowDisplay 一致）
 				display.setViewScale(info.viewScale());
 				display.setGeometrySize(info.geometryWidth(), info.geometryHeight());
+				// 传递发送端 PPB（保证世界尺寸一致）
+				display.setSenderPixelsPerBlock(info.senderPixelsPerBlock());
 				break;
 			}
 		}
@@ -304,6 +309,9 @@ public class SharedWindowClientHandler {
 		private int geometryWidth;
 		private int geometryHeight;
 		
+		// 发送端自己的 pixelsPerBlock（0=未收到）
+		private int senderPixelsPerBlock = 0;
+		
 		private byte[] imageData;
 		private int imageWidth, imageHeight;
 		
@@ -349,6 +357,7 @@ public class SharedWindowClientHandler {
 		public double viewScale() { return viewScale; }
 		public int geometryWidth() { return geometryWidth; }
 		public int geometryHeight() { return geometryHeight; }
+		public int senderPixelsPerBlock() { return senderPixelsPerBlock; }
 		
 		public void setPermission(WindowPermission permission) {
 			this.permission = permission;
@@ -361,6 +370,10 @@ public class SharedWindowClientHandler {
 		
 		public void updateViewScale(double viewScale) {
 			this.viewScale = viewScale;
+		}
+		
+		public void setSenderPixelsPerBlock(int ppb) {
+			this.senderPixelsPerBlock = ppb;
 		}
 		
 		public void updateGeometrySize(int width, int height) {

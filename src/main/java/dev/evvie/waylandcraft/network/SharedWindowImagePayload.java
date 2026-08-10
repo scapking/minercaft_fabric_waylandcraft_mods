@@ -6,7 +6,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
-public record SharedWindowImagePayload(long windowHandle, int frameNumber, int x, int y, int width, int height, byte[] imageData, double pivotX, double pivotY, double pivotZ, double normalX, double normalY, double normalZ, double downX, double downY, double downZ, double viewScale, int geometryWidth, int geometryHeight) implements CustomPacketPayload {
+public record SharedWindowImagePayload(long windowHandle, int frameNumber, int x, int y, int width, int height, byte[] imageData, double pivotX, double pivotY, double pivotZ, double normalX, double normalY, double normalZ, double downX, double downY, double downZ, double viewScale, int geometryWidth, int geometryHeight, int senderPixelsPerBlock) implements CustomPacketPayload {
 	
 	public static final Identifier ID = Identifier.fromNamespaceAndPath(WaylandCraftCommon.MOD_ID, "shared_window_image");
 	
@@ -34,6 +34,7 @@ public record SharedWindowImagePayload(long windowHandle, int frameNumber, int x
 			buf.writeDouble(payload.viewScale);
 			buf.writeVarInt(payload.geometryWidth);
 			buf.writeVarInt(payload.geometryHeight);
+			buf.writeVarInt(payload.senderPixelsPerBlock);
 		},
 		buf -> {
 			long windowHandle = buf.readLong();
@@ -57,7 +58,8 @@ public record SharedWindowImagePayload(long windowHandle, int frameNumber, int x
 			double viewScale = buf.readDouble();
 			int geometryWidth = buf.readVarInt();
 			int geometryHeight = buf.readVarInt();
-			return new SharedWindowImagePayload(windowHandle, frameNumber, x, y, width, height, imageData, pivotX, pivotY, pivotZ, normalX, normalY, normalZ, downX, downY, downZ, viewScale, geometryWidth, geometryHeight);
+			int senderPixelsPerBlock = buf.readVarInt();
+			return new SharedWindowImagePayload(windowHandle, frameNumber, x, y, width, height, imageData, pivotX, pivotY, pivotZ, normalX, normalY, normalZ, downX, downY, downZ, viewScale, geometryWidth, geometryHeight, senderPixelsPerBlock);
 		}
 	);
 	

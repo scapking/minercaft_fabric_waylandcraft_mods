@@ -67,7 +67,10 @@ public class WindowShareManager {
 	public WindowShareManager(WaylandCraft clientMod) {
 		this.clientMod = clientMod;
 		this.serverMod = null;
-		this.captureConfig = new ImageCapture.CaptureConfig(0.5f, 0.7f, 20);
+		// 默认全分辨率高质量（scale=1.0, quality=0.85, fps=20）：
+		// 之前默认 0.5 缩放 + JPEG 0.7 导致接收端画面明显比本地模糊。
+		// fps 保持 20 控制手机端解码负担；带宽不限（局域网/服务器转发通常充裕）。
+		this.captureConfig = new ImageCapture.CaptureConfig(1.0f, 0.85f, 20);
 		this.frameRateController = new FrameRateController();
 		this.diffUpdateManager = new DiffUpdateManager();
 		
@@ -255,6 +258,13 @@ public class WindowShareManager {
 			}
 		}
 		
+		// 发送端自己的 pixelsPerBlock：接收端用它渲染，保证世界尺寸与本地一致
+		// （接收端可能使用不同的 PPB 设置或 native 不可用导致 settings==null）
+		int senderPixelsPerBlock = 500;
+		if(WaylandCraft.instance != null && WaylandCraft.instance.settings != null) {
+			senderPixelsPerBlock = WaylandCraft.instance.settings.getPixelsPerBlock();
+		}
+		
 		SharedWindowImagePayload imagePayload = new SharedWindowImagePayload(
 			state.windowHandle, 0, framebufferXOff, framebufferYOff,
 			originalW, originalH,
@@ -262,7 +272,8 @@ public class WindowShareManager {
 			pivotX, pivotY, pivotZ,
 			normalX, normalY, normalZ,
 			downX, downY, downZ,
-			viewScale, geometryWidth, geometryHeight
+			viewScale, geometryWidth, geometryHeight,
+			senderPixelsPerBlock
 		);
 		ClientPlayNetworking.send(imagePayload);
 		
